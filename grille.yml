@@ -1,0 +1,69 @@
+id: aidd
+
+axes:
+  - id: taille
+    label: Taille
+    description: >
+      La taille habituelle des features livrées avec l'IA,
+      pas la plus grosse jamais faite.
+    echelle:
+      - { rank: 0, valeur: "aucune" }
+      - { rank: 1, valeur: "S" }
+      - { rank: 2, valeur: "M" }
+      - { rank: 3, valeur: "L" }
+      - { rank: 4, valeur: "L-XL" }
+      - { rank: 5, valeur: "L-XL" }
+      - { rank: 6, valeur: "L-XL" }
+
+  - id: harness
+    label: Harness
+    description: >
+      Ce que la personne a mis en place autour du modèle.
+      Context engineering : ce que l'IA sait (mémoire, architecture, conventions).
+      Behavior : comment elle agit (règles, agents, hooks, guardrails).
+      Boucles : un script relance l'IA tant qu'une commande échoue.
+    echelle:
+      - { rank: 0, valeur: "rien" }
+      - { rank: 1, valeur: "prompts" }
+      - { rank: 2, valeur: "context engineering" }
+      - { rank: 3, valeur: "context engineering, behavior" }
+      - { rank: 4, valeur: "context engineering, behavior" }
+      - { rank: 5, valeur: "context engineering, behavior, boucles" }
+      - { rank: 6, valeur: "context engineering, behavior, boucles" }
+
+  - id: intervention
+    label: Intervention
+    description: >
+      Quand la personne intervient dans le travail de l'IA.
+      Cadrer, c'est choisir la tâche et dire ce qui est attendu.
+    echelle:
+      - { rank: 0, valeur: "—" }
+      - { rank: 1, valeur: "après coup, sur la majorité" }
+      - { rank: 2, valeur: "après coup, sur une partie" }
+      - { rank: 3, valeur: "aux étapes clés" }
+      - { rank: 4, valeur: "aux étapes clés" }
+      - { rank: 5, valeur: "jamais, une fois la tâche cadrée" }
+      - { rank: 6, valeur: "jamais, cadrage compris" }
+
+  - id: parallele
+    label: En parallèle
+    description: >
+      Combien de chantiers avancent en même temps, habituellement.
+      Un pic isolé ne compte pas.
+    echelle:
+      - { rank: 0, valeur: 0 }
+      - { rank: 1, valeur: 1 }
+      - { rank: 2, valeur: 1 }
+      - { rank: 3, valeur: 1 }
+      - { rank: 4, valeur: 3 }
+      - { rank: 5, valeur: 3 }
+      - { rank: 6, valeur: 3 }
+
+niveaux:
+  - { id: white, label: "❖ White", rank: 0 }
+  - { id: red, label: "🔺 Red", rank: 1 }
+  - { id: blue, label: "🔹 Blue", rank: 2 }
+  - { id: green, label: "🟢 Green", rank: 3 }
+  - { id: copper, label: "🥉 Copper", rank: 4 }
+  - { id: silver, label: "🥈 Silver", rank: 5 }
+  - { id: gold, label: "🥇 Gold", rank: 6 }

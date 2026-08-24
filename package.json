@@ -1,0 +1,35 @@
+{
+  "name": "aidd-diagnostic",
+  "version": "1.0.0",
+  "description": "Outil de diagnostic AI-Driven Development — LAIVEL UP hackathon",
+  "main": "dist/cli.js",
+  "bin": {
+    "aidd-eval": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "tsc && node dist/cli.js",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CharnaceRegis/aidd-diagnostic.git"
+  },
+  "keywords": ["aidd", "ai-driven-development", "diagnostic", "evaluation"],
+  "author": "CRegis",
+  "license": "MIT",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/CharnaceRegis/aidd-diagnostic/issues"
+  },
+  "homepage": "https://github.com/CharnaceRegis/aidd-diagnostic#readme",
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
+    "yaml": "^2.9.0"
+  }
+}
