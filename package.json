@@ -4,7 +4,7 @@
   "description": "Outil de diagnostic AI-Driven Development — LAIVEL UP hackathon",
   "main": "dist/cli.js",
   "bin": {
-    "aidd-eval": "dist/cli.js"
+    "aidd-diagnostic": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

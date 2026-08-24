@@ -23,10 +23,10 @@ const { values } = parseArgs({
 
 if (values.help || (!values.profil && !values.setup)) {
   console.log(`
-aidd-eval — Diagnostic AI-Driven Development
+aidd-diagnostic — Diagnostic AI-Driven Development
 
 Usage :
-  aidd-eval --profil <fichier_ou_dossier> [options]
+  aidd-diagnostic --profil <fichier_ou_dossier> [options]
 
 Options :
   -p, --profil   Chemin vers un profil (JSON/YAML) ou un dossier de profils

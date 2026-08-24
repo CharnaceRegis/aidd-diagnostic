@@ -31,7 +31,7 @@ npm run build
 ## Usage
 
 ```
-aidd-eval --profil <fichier_ou_dossier> [options]
+aidd-diagnostic --profil <fichier_ou_dossier> [options]
 ```
 
 | Option | Description |
@@ -52,6 +52,9 @@ node dist/cli.js --profil profiles/
 
 # Sortie JSON avec détails de confiance
 node dist/cli.js --profil profiles/ --json --verbose
+
+# Configurer ou changer le provider LLM
+node dist/cli.js --setup
 ```
 
 ## Qu'est-ce qui sort
