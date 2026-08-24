@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { parseArgs } from "node:util";
+import { createInterface, type Interface } from "node:readline";
 import { chargerGrille } from "./grille.js";
 import { chargerProfils } from "./parser.js";
 import { scorerProfil } from "./scorer.js";
@@ -9,44 +9,27 @@ import { expliquer } from "./explainer.js";
 import { lireConfig } from "./config.js";
 import { setup } from "./setup.js";
 import { createClient, type LLMClient } from "./llm/index.js";
+import type { Config } from "./config.js";
 import type { Diagnostic, Profil } from "./types.js";
 
-const { values } = parseArgs({
-  options: {
-    profil: { type: "string", short: "p" },
-    json: { type: "boolean", default: false },
-    verbose: { type: "boolean", short: "v", default: false },
-    help: { type: "boolean", short: "h", default: false },
-    setup: { type: "boolean", default: false },
-  },
-});
-
-if (values.help || (!values.profil && !values.setup)) {
-  console.log(`
-aidd-diagnostic — Diagnostic AI-Driven Development
-
-Usage :
-  aidd-diagnostic --profil <fichier_ou_dossier> [options]
-
-Options :
-  -p, --profil   Chemin vers un profil (JSON/YAML) ou un dossier de profils
-  -v, --verbose  Afficher les scores de confiance par axe
-      --json     Sortie JSON au lieu de la sortie formatée
-      --setup    Configurer le provider LLM et la clé API
-  -h, --help     Afficher cette aide
-`);
-  process.exit(values.help ? 0 : 1);
+function ask(rl: Interface, q: string): Promise<string> {
+  return new Promise((resolve) => rl.question(q, resolve));
 }
 
-async function getClient(): Promise<LLMClient> {
-  let config = lireConfig();
+function afficherBanniere(): void {
+  console.log(`
+  ╔════════════════════════════════════════╗
+  ║        aidd-diagnostic                 ║
+  ║   Diagnostic AI-Driven Development     ║
+  ╚════════════════════════════════════════╝
+`);
+}
 
-  if (!config) {
-    console.log("  Aucune configuration LLM détectée.\n");
-    config = await setup();
-  }
-
-  return createClient(config.provider, config.apiKey);
+function afficherMenu(provider: string): void {
+  console.log(`  Provider actif : ${provider}\n`);
+  console.log("  1. Évaluer un profil ou un dossier");
+  console.log("  2. Configurer le provider LLM");
+  console.log("  3. Quitter\n");
 }
 
 async function diagnostiquer(
@@ -78,7 +61,7 @@ async function diagnostiquer(
   };
 }
 
-function afficher(profil: Profil, diag: Diagnostic, verbose: boolean): void {
+function afficherDiagnostic(profil: Profil, diag: Diagnostic, verbose: boolean): void {
   const sep = "─".repeat(50);
 
   console.log(`\n${sep}`);
@@ -118,37 +101,87 @@ function afficher(profil: Profil, diag: Diagnostic, verbose: boolean): void {
   console.log(`\n${sep}\n`);
 }
 
-async function main(): Promise<void> {
-  if (values.setup) {
-    await setup();
+async function lancerEvaluation(rl: Interface, client: LLMClient): Promise<void> {
+  const chemin = (await ask(rl, "\n  Chemin du profil ou dossier : ")).trim();
+  if (!chemin) return;
+
+  const verbose = (await ask(rl, "  Mode verbose ? (o/N) : ")).trim().toLowerCase() === "o";
+
+  let profils: Profil[];
+  try {
+    profils = chargerProfils(chemin);
+  } catch (err) {
+    console.error(`\n  Erreur : ${err instanceof Error ? err.message : err}\n`);
     return;
   }
 
-  const client = await getClient();
-  const profils = chargerProfils(values.profil!);
-
-  console.log(`\n${profils.length} profil(s) chargé(s). Analyse en cours...\n`);
-
-  const resultats: Array<{ profil: Profil; diagnostic: Diagnostic }> = [];
+  console.log(`\n  ${profils.length} profil(s) chargé(s). Analyse en cours...\n`);
 
   for (const profil of profils) {
     try {
       const diagnostic = await diagnostiquer(client, profil);
-      resultats.push({ profil, diagnostic });
-
-      if (!values.json) {
-        afficher(profil, diagnostic, values.verbose ?? false);
-      }
+      afficherDiagnostic(profil, diagnostic, verbose);
     } catch (err) {
       console.error(
-        `Erreur sur le profil ${profil.id} :`,
+        `  Erreur sur le profil ${profil.id} :`,
         err instanceof Error ? err.message : err
       );
     }
   }
+}
 
-  if (values.json) {
-    console.log(JSON.stringify(resultats, null, 2));
+async function lancerSetup(rl: Interface): Promise<Config | null> {
+  try {
+    return await setup(rl);
+  } catch (err) {
+    console.error(`\n  ${err instanceof Error ? err.message : err}\n`);
+    return null;
+  }
+}
+
+async function main(): Promise<void> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+  afficherBanniere();
+
+  let config: Config | null = lireConfig();
+  if (!config) {
+    console.log("  Première utilisation — configuration requise.\n");
+    config = await lancerSetup(rl);
+    if (!config) {
+      rl.close();
+      return;
+    }
+  }
+
+  let client = createClient(config.provider, config.apiKey);
+
+  while (true) {
+    afficherMenu(config.provider);
+    const choix = (await ask(rl, "  Choix : ")).trim();
+
+    switch (choix) {
+      case "1":
+        await lancerEvaluation(rl, client);
+        break;
+
+      case "2": {
+        const nouveau = await lancerSetup(rl);
+        if (nouveau) {
+          config = nouveau;
+          client = createClient(config.provider, config.apiKey);
+        }
+        break;
+      }
+
+      case "3":
+        console.log("\n  À bientôt.\n");
+        rl.close();
+        return;
+
+      default:
+        console.log("  Choix invalide.\n");
+    }
   }
 }
 

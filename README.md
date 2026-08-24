@@ -8,66 +8,50 @@ Donne un profil, récupère un diagnostic : niveau (White → Gold), explication
 
 ## Lancer l'outil
 
-Prérequis : Node.js 22+, une clé API Anthropic.
+Prérequis : Node.js 22+, une clé API Claude (Anthropic) ou OpenAI.
 
 ```bash
 git clone https://github.com/CharnaceRegis/aidd-diagnostic.git
 cd aidd-diagnostic
 npm install
-```
-
-Exporter la clé API :
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-Compiler
-
-```bash
 npm run build
 ```
 
 ## Usage
 
-```
-aidd-diagnostic --profil <fichier_ou_dossier> [options]
+```bash
+npm start
 ```
 
-| Option | Description |
-| --- | --- |
-| `-p, --profil` | Chemin vers un profil JSON/YAML ou un dossier de profils |
-| `-v, --verbose` | Affiche les scores de confiance et les justifications par axe |
-| `--json` | Sortie JSON brute (pour du traitement automatisé) |
-| `-h, --help` | Affiche l'aide |
+Le CLI est interactif. Au lancement, un menu s'affiche :
 
-Exemples :
+```
+  1. Évaluer un profil ou un dossier
+  2. Configurer le provider LLM
+  3. Quitter
+```
+
+À la première utilisation, l'outil demande de choisir un provider (Claude ou OpenAI) et de saisir la clé API. La configuration est sauvegardée dans `.env` (gitignored).
+
+On peut aussi exporter la clé en variable d'environnement :
 
 ```bash
-# Un seul profil
-node dist/cli.js --profil profiles/perceval.json
-
-# Tous les profils d'un dossier
-node dist/cli.js --profil profiles/
-
-# Sortie JSON avec détails de confiance
-node dist/cli.js --profil profiles/ --json --verbose
-
-# Configurer ou changer le provider LLM
-node dist/cli.js --setup
+export ANTHROPIC_API_KEY="sk-ant-..."
+# ou
+export OPENAI_API_KEY="sk-..."
 ```
 
 ## Qu'est-ce qui sort
 
-Pour chaque profil, l'outil affiche :
+Pour chaque profil évalué, l'outil affiche :
 
-- **Le niveau AIDD** (❖ White → 🥇 Gold)
+- **Le niveau AIDD** (White → Gold)
 - **Le score de chaque axe** (Taille, Harness, Intervention, Parallèle)
 - **L'axe limitant** — celui qui empêche de monter
 - **Une explication** — pourquoi ce niveau, en termes clairs
 - **Un plan de progression** — quoi faire concrètement pour passer au niveau suivant
 
-En mode `--verbose`, chaque axe affiche aussi son indice de confiance (`high`, `medium`, `low`) et la justification détaillée du LLM.
+En mode verbose, chaque axe affiche aussi son indice de confiance (`high`, `medium`, `low`) et la justification détaillée du LLM.
 
 ## Architecture
 
