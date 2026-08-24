@@ -22,11 +22,10 @@ Exporter la clé API :
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-Compiler et lancer sur un profil :
+Compiler
 
 ```bash
 npm run build
-node dist/cli.js --profil fixtures/profil-exemple.json
 ```
 
 ## Usage
