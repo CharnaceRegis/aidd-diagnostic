@@ -1,15 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type { LLMClient } from "./llm/index.js";
 import type { AxeScore, Grille, NiveauDefinition } from "./types.js";
 import { niveauParRank } from "./grille.js";
-
-let _client: Anthropic | null = null;
-
-function getClient(): Anthropic {
-  if (!_client) {
-    _client = new Anthropic();
-  }
-  return _client;
-}
 
 export interface ExplicationResult {
   explication: string;
@@ -17,13 +8,12 @@ export interface ExplicationResult {
 }
 
 export async function expliquer(
+  client: LLMClient,
   grille: Grille,
   scores: AxeScore[],
   niveauGlobal: NiveauDefinition,
   axeLimitant: string
 ): Promise<ExplicationResult> {
-  const client = getClient();
-
   const scoresResume = scores
     .map((s) => {
       const niv = niveauParRank(grille, s.rank);
@@ -56,22 +46,14 @@ ${niveauSuivant ? `Niveau suivant à atteindre : **${niveauSuivant.label}** (ran
 
 Réponds en JSON avec deux clés : "explication" et "progression". Pas de markdown dans les valeurs, juste du texte brut avec des retours à la ligne.`;
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: prompt }],
-  });
+  const response = await client.complete(prompt, { maxTokens: 1024 });
 
-  const text = response.content
-    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
+  const text = response.text ?? "";
 
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("Pas de JSON dans la réponse");
-    const parsed = JSON.parse(jsonMatch[0]) as ExplicationResult;
-    return parsed;
+    return JSON.parse(jsonMatch[0]) as ExplicationResult;
   } catch {
     return {
       explication: `Niveau ${niveauGlobal.label} attribué. L'axe limitant est ${axeLimitant}.`,

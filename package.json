@@ -16,7 +16,12 @@
     "type": "git",
     "url": "git+https://github.com/CharnaceRegis/aidd-diagnostic.git"
   },
-  "keywords": ["aidd", "ai-driven-development", "diagnostic", "evaluation"],
+  "keywords": [
+    "aidd",
+    "ai-driven-development",
+    "diagnostic",
+    "evaluation"
+  ],
   "author": "CRegis",
   "license": "MIT",
   "type": "module",
@@ -30,6 +35,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
+    "openai": "^7.5.0",
     "yaml": "^2.9.0"
   }
 }

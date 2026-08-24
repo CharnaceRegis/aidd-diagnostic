@@ -1,42 +1,28 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { LLMClient, ToolSchema } from "./llm/index.js";
 import type { AxeDefinition, AxeId, AxeScore, Confiance, Grille, Profil } from "./types.js";
 
-const SCORE_TOOL: Anthropic.Messages.Tool = {
+const SCORE_TOOL: ToolSchema = {
   name: "score_axe",
   description: "Retourne le score d'un axe AIDD pour un profil donné.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      rank: {
-        type: "number",
-        description: "Le rank (0 à 6) correspondant au niveau sur cet axe.",
-      },
-      justification: {
-        type: "string",
-        description:
-          "Explication courte (2-3 phrases) de pourquoi ce rank a été attribué.",
-      },
-      confiance: {
-        type: "string",
-        enum: ["high", "medium", "low"],
-        description:
-          "Niveau de confiance. 'low' si les données sont insuffisantes.",
-      },
+  properties: {
+    rank: {
+      type: "number",
+      description: "Le rank (0 à 6) correspondant au niveau sur cet axe.",
     },
-    required: ["rank", "justification", "confiance"],
+    justification: {
+      type: "string",
+      description: "Explication courte (2-3 phrases) de pourquoi ce rank a été attribué.",
+    },
+    confiance: {
+      type: "string",
+      description: "Niveau de confiance. 'low' si les données sont insuffisantes.",
+      enum: ["high", "medium", "low"],
+    },
   },
+  required: ["rank", "justification", "confiance"],
 };
-
-let _client: Anthropic | null = null;
-
-function getClient(): Anthropic {
-  if (!_client) {
-    _client = new Anthropic();
-  }
-  return _client;
-}
 
 function construirePromptAxe(axe: AxeDefinition, profil: Profil): string {
   const promptPath = resolve(import.meta.dirname, "prompts", "score-axis.md");
@@ -53,43 +39,33 @@ function construirePromptAxe(axe: AxeDefinition, profil: Profil): string {
     .replace("{{AXE_DESCRIPTION}}", axe.description)
     .replace(
       "{{AXE_ECHELLE}}",
-      axe.echelle
-        .map((e) => `  rank ${e.rank} → ${e.valeur}`)
-        .join("\n")
+      axe.echelle.map((e) => `  rank ${e.rank} → ${e.valeur}`).join("\n")
     )
     .replace("{{PROFIL}}", JSON.stringify(profil.donnees, null, 2));
 }
 
 export async function scorerProfil(
+  client: LLMClient,
   grille: Grille,
   profil: Profil
 ): Promise<AxeScore[]> {
-  const scores = await Promise.all(
-    grille.axes.map((axe) => scorerAxe(axe, profil))
-  );
-  return scores;
+  return Promise.all(grille.axes.map((axe) => scorerAxe(client, axe, profil)));
 }
 
 async function scorerAxe(
+  client: LLMClient,
   axe: AxeDefinition,
   profil: Profil
 ): Promise<AxeScore> {
-  const client = getClient();
   const prompt = construirePromptAxe(axe, profil);
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 512,
+  const response = await client.complete(prompt, {
     tools: [SCORE_TOOL],
-    tool_choice: { type: "tool", name: "score_axe" },
-    messages: [{ role: "user", content: prompt }],
+    forceToolName: "score_axe",
+    maxTokens: 512,
   });
 
-  const toolBlock = response.content.find(
-    (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use"
-  );
-
-  if (!toolBlock) {
+  if (!response.toolInput) {
     return {
       axe: axe.id as AxeId,
       rank: 0,
@@ -98,17 +74,15 @@ async function scorerAxe(
     };
   }
 
-  const input = toolBlock.input as {
+  const input = response.toolInput as {
     rank: number;
     justification: string;
     confiance: Confiance;
   };
 
-  const rankClamped = Math.max(0, Math.min(6, Math.round(input.rank)));
-
   return {
     axe: axe.id as AxeId,
-    rank: rankClamped,
+    rank: Math.max(0, Math.min(6, Math.round(input.rank))),
     justification: input.justification,
     confiance: input.confiance,
   };

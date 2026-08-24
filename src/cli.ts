@@ -6,6 +6,9 @@ import { chargerProfils } from "./parser.js";
 import { scorerProfil } from "./scorer.js";
 import { evaluer } from "./engine.js";
 import { expliquer } from "./explainer.js";
+import { lireConfig } from "./config.js";
+import { setup } from "./setup.js";
+import { createClient, type LLMClient } from "./llm/index.js";
 import type { Diagnostic, Profil } from "./types.js";
 
 const { values } = parseArgs({
@@ -14,10 +17,11 @@ const { values } = parseArgs({
     json: { type: "boolean", default: false },
     verbose: { type: "boolean", short: "v", default: false },
     help: { type: "boolean", short: "h", default: false },
+    setup: { type: "boolean", default: false },
   },
 });
 
-if (values.help || !values.profil) {
+if (values.help || (!values.profil && !values.setup)) {
   console.log(`
 aidd-eval — Diagnostic AI-Driven Development
 
@@ -28,20 +32,36 @@ Options :
   -p, --profil   Chemin vers un profil (JSON/YAML) ou un dossier de profils
   -v, --verbose  Afficher les scores de confiance par axe
       --json     Sortie JSON au lieu de la sortie formatée
+      --setup    Configurer le provider LLM et la clé API
   -h, --help     Afficher cette aide
 `);
   process.exit(values.help ? 0 : 1);
 }
 
-async function diagnostiquer(profil: Profil): Promise<Diagnostic> {
+async function getClient(): Promise<LLMClient> {
+  let config = lireConfig();
+
+  if (!config) {
+    console.log("  Aucune configuration LLM détectée.\n");
+    config = await setup();
+  }
+
+  return createClient(config.provider, config.apiKey);
+}
+
+async function diagnostiquer(
+  client: LLMClient,
+  profil: Profil
+): Promise<Diagnostic> {
   const grille = chargerGrille();
 
-  const scores = await scorerProfil(grille, profil);
+  const scores = await scorerProfil(client, grille, profil);
   const { niveauGlobal, axeLimitant, confianceGlobale } = evaluer(
     grille,
     scores
   );
   const { explication, progression } = await expliquer(
+    client,
     grille,
     scores,
     niveauGlobal,
@@ -99,7 +119,12 @@ function afficher(profil: Profil, diag: Diagnostic, verbose: boolean): void {
 }
 
 async function main(): Promise<void> {
-  const grille = chargerGrille();
+  if (values.setup) {
+    await setup();
+    return;
+  }
+
+  const client = await getClient();
   const profils = chargerProfils(values.profil!);
 
   console.log(`\n${profils.length} profil(s) chargé(s). Analyse en cours...\n`);
@@ -108,7 +133,7 @@ async function main(): Promise<void> {
 
   for (const profil of profils) {
     try {
-      const diagnostic = await diagnostiquer(profil);
+      const diagnostic = await diagnostiquer(client, profil);
       resultats.push({ profil, diagnostic });
 
       if (!values.json) {
