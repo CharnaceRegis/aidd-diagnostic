@@ -13,7 +13,7 @@ import { lireConfig } from "./config.js";
 import { setup } from "./setup.js";
 import { createClient, type LLMClient } from "./llm/index.js";
 import type { Config } from "./config.js";
-import type { AxeId, AxeScore, Diagnostic, Profil } from "./types.js";
+import type { AxeId, AxeScore, Diagnostic, Grille, Profil } from "./types.js";
 
 type Mode = "heuristique" | "llm";
 
@@ -65,29 +65,44 @@ async function diagnostiquerLLM(client: LLMClient, profil: Profil): Promise<Diag
   return { scores, niveauGlobal, axeLimitant, explication, progression, confianceGlobale };
 }
 
+const LABELS_AXES: Record<string, string> = {
+  taille: "Taille",
+  harness: "Harness",
+  intervention: "Intervention",
+  parallele: "En parallèle",
+};
+
+const CONF_DOTS: Record<string, string> = {
+  high: "●●●",
+  medium: "●●○",
+  low: "●○○",
+};
+
+function afficherEchelle(grille: Grille, rankActuel: number): string {
+  return grille.niveaux
+    .map((n) => {
+      const emoji = n.label.split(" ")[0];
+      return n.rank === rankActuel ? `[${emoji}]` : ` ${emoji} `;
+    })
+    .join("──");
+}
+
 function afficherDiagnostic(profil: Profil, diag: Diagnostic): void {
   const sep = "─".repeat(50);
+  const grille = chargerGrille();
 
   console.log(`\n${sep}`);
-  console.log(`  Profil : ${profil.id}`);
+  console.log(`  ${profil.id}`);
+  console.log(`  ${afficherEchelle(grille, diag.niveauGlobal.rank)}`);
   console.log(sep);
-  console.log(`\n  Niveau AIDD : ${diag.niveauGlobal.label}`);
-  console.log(`  Axe limitant : ${diag.axeLimitant}`);
-  console.log(`  Confiance globale : ${diag.confianceGlobale}`);
 
-  console.log(`\n  Scores par axe :`);
   for (const s of diag.scores) {
-    console.log(`    ${s.axe.padEnd(14)} → rank ${s.rank} [${s.confiance}]`);
-    console.log(`      ${s.justification}`);
+    const label = (LABELS_AXES[s.axe] ?? s.axe).padEnd(14);
+    const limitant = s.axe === diag.axeLimitant ? " ◄ limitant" : "";
+    const lowConf = s.confiance === "low" ? "  ⚠ données insuffisantes" : "";
+    console.log(`  ${label} rank ${s.rank}${limitant}${lowConf}`);
+    console.log(`    ${s.justification}\n`);
   }
-
-  console.log(`\n  Explication :`);
-  console.log(
-    diag.explication
-      .split("\n")
-      .map((l) => `    ${l}`)
-      .join("\n")
-  );
 
   console.log(`\n  Progression :`);
   console.log(
@@ -121,6 +136,7 @@ async function lancerEvaluation(
     return;
   }
 
+  console.clear();
   console.log(`\n  ${profils.length} profil(s) chargé(s). Analyse en cours (${mode})...\n`);
 
   for (const profil of profils) {
