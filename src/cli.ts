@@ -4,13 +4,17 @@ import { createInterface, type Interface } from "node:readline";
 import { chargerGrille } from "./grille.js";
 import { chargerProfils } from "./parser.js";
 import { scorerProfil } from "./scorer.js";
+import { scorerProfilHeuristique } from "./heuristic-scorer.js";
 import { evaluer } from "./engine.js";
 import { expliquer } from "./explainer.js";
+import { expliquerHeuristique } from "./heuristic-explainer.js";
 import { lireConfig } from "./config.js";
 import { setup } from "./setup.js";
 import { createClient, type LLMClient } from "./llm/index.js";
 import type { Config } from "./config.js";
-import type { Diagnostic, Profil } from "./types.js";
+import type { AxeId, AxeScore, Diagnostic, Profil } from "./types.js";
+
+type Mode = "heuristique" | "llm";
 
 function ask(rl: Interface, q: string): Promise<string> {
   return new Promise((resolve) => rl.question(q, resolve));
@@ -25,40 +29,39 @@ function afficherBanniere(): void {
 `);
 }
 
-function afficherMenu(provider: string): void {
-  console.log(`  Provider actif : ${provider}\n`);
+function afficherMenuHeuristique(): void {
+  console.log("  Mode : heuristique (sans LLM)\n");
   console.log("  1. Évaluer un profil ou un dossier");
-  console.log("  2. Configurer le provider LLM");
+  console.log("  2. Configurer un LLM (mode enrichi)");
   console.log("  3. Quitter\n");
 }
 
-async function diagnostiquer(
-  client: LLMClient,
-  profil: Profil
-): Promise<Diagnostic> {
+function afficherMenuLLM(provider: string): void {
+  console.log(`  Mode : LLM (${provider})\n`);
+  console.log("  1. Évaluer un profil ou un dossier");
+  console.log("  2. Reconfigurer le LLM");
+  console.log("  3. Repasser en mode heuristique");
+  console.log("  4. Quitter\n");
+}
+
+async function diagnostiquerHeuristique(profil: Profil): Promise<Diagnostic> {
   const grille = chargerGrille();
+  const scores = scorerProfilHeuristique(grille, profil);
+  const { niveauGlobal, axeLimitant, confianceGlobale } = evaluer(grille, scores);
+  const { explication, progression } = expliquerHeuristique(
+    grille, scores, niveauGlobal, axeLimitant as AxeId
+  );
+  return { scores, niveauGlobal, axeLimitant, explication, progression, confianceGlobale };
+}
 
+async function diagnostiquerLLM(client: LLMClient, profil: Profil): Promise<Diagnostic> {
+  const grille = chargerGrille();
   const scores = await scorerProfil(client, grille, profil);
-  const { niveauGlobal, axeLimitant, confianceGlobale } = evaluer(
-    grille,
-    scores
-  );
+  const { niveauGlobal, axeLimitant, confianceGlobale } = evaluer(grille, scores);
   const { explication, progression } = await expliquer(
-    client,
-    grille,
-    scores,
-    niveauGlobal,
-    axeLimitant
+    client, grille, scores, niveauGlobal, axeLimitant
   );
-
-  return {
-    scores,
-    niveauGlobal,
-    axeLimitant,
-    explication,
-    progression,
-    confianceGlobale,
-  };
+  return { scores, niveauGlobal, axeLimitant, explication, progression, confianceGlobale };
 }
 
 function afficherDiagnostic(profil: Profil, diag: Diagnostic, verbose: boolean): void {
@@ -101,7 +104,11 @@ function afficherDiagnostic(profil: Profil, diag: Diagnostic, verbose: boolean):
   console.log(`\n${sep}\n`);
 }
 
-async function lancerEvaluation(rl: Interface, client: LLMClient): Promise<void> {
+async function lancerEvaluation(
+  rl: Interface,
+  mode: Mode,
+  client: LLMClient | null
+): Promise<void> {
   const chemin = (await ask(rl, "\n  Chemin du profil ou dossier : ")).trim();
   if (!chemin) return;
 
@@ -115,11 +122,13 @@ async function lancerEvaluation(rl: Interface, client: LLMClient): Promise<void>
     return;
   }
 
-  console.log(`\n  ${profils.length} profil(s) chargé(s). Analyse en cours...\n`);
+  console.log(`\n  ${profils.length} profil(s) chargé(s). Analyse en cours (${mode})...\n`);
 
   for (const profil of profils) {
     try {
-      const diagnostic = await diagnostiquer(client, profil);
+      const diagnostic = mode === "llm" && client
+        ? await diagnostiquerLLM(client, profil)
+        : await diagnostiquerHeuristique(profil);
       afficherDiagnostic(profil, diagnostic, verbose);
     } catch (err) {
       console.error(
@@ -144,43 +153,71 @@ async function main(): Promise<void> {
 
   afficherBanniere();
 
+  let mode: Mode = "heuristique";
   let config: Config | null = lireConfig();
-  if (!config) {
-    console.log("  Première utilisation — configuration requise.\n");
-    config = await lancerSetup(rl);
-    if (!config) {
-      rl.close();
-      return;
-    }
+  let client: LLMClient | null = null;
+
+  if (config) {
+    mode = "llm";
+    client = createClient(config.provider, config.apiKey);
   }
 
-  let client = createClient(config.provider, config.apiKey);
-
   while (true) {
-    afficherMenu(config.provider);
+    if (mode === "llm" && config) {
+      afficherMenuLLM(config.provider);
+    } else {
+      afficherMenuHeuristique();
+    }
+
     const choix = (await ask(rl, "  Choix : ")).trim();
 
-    switch (choix) {
-      case "1":
-        await lancerEvaluation(rl, client);
-        break;
-
-      case "2": {
-        const nouveau = await lancerSetup(rl);
-        if (nouveau) {
-          config = nouveau;
-          client = createClient(config.provider, config.apiKey);
+    if (mode === "heuristique") {
+      switch (choix) {
+        case "1":
+          await lancerEvaluation(rl, mode, null);
+          break;
+        case "2": {
+          const nouveau = await lancerSetup(rl);
+          if (nouveau) {
+            config = nouveau;
+            client = createClient(config.provider, config.apiKey);
+            mode = "llm";
+          }
+          break;
         }
-        break;
+        case "3":
+          console.log("\n  À bientôt.\n");
+          rl.close();
+          return;
+        default:
+          console.log("  Choix invalide.\n");
       }
-
-      case "3":
-        console.log("\n  À bientôt.\n");
-        rl.close();
-        return;
-
-      default:
-        console.log("  Choix invalide.\n");
+    } else {
+      switch (choix) {
+        case "1":
+          await lancerEvaluation(rl, mode, client);
+          break;
+        case "2": {
+          const nouveau = await lancerSetup(rl);
+          if (nouveau) {
+            config = nouveau;
+            client = createClient(config.provider, config.apiKey);
+          }
+          break;
+        }
+        case "3":
+          mode = "heuristique";
+          client = null;
+          config = null;
+          console.log("\n  Repassé en mode heuristique.\n");
+          break;
+        case "4":
+          console.log("\n  À bientôt.\n");
+          rl.close();
+          return;
+        default:
+          console.log("  Choix invalide.\n");
+      }
     }
   }
 }
