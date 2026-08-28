@@ -17,7 +17,7 @@ export function createAnthropicClient(apiKey: string): LLMClient {
       }));
 
       const response = await client.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-5",
         max_tokens: options?.maxTokens ?? 1024,
         messages: [{ role: "user", content: prompt }],
         ...(tools && { tools }),
