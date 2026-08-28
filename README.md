@@ -1,6 +1,6 @@
 # aidd-diagnostic
 
-CLI qui évalue le niveau AI-Driven Development d'un développeur à partir de son profil.
+CLI qui évalue le niveau AI-Driven Development d'un développeur à partir de son dossier de profil.
 
 Donne un profil, récupère un diagnostic : niveau (White → Gold), explication de ce qui a mené là, et un plan concret pour monter d'un cran.
 
@@ -8,7 +8,7 @@ Donne un profil, récupère un diagnostic : niveau (White → Gold), explication
 
 ## Lancer l'outil
 
-Prérequis : Node.js 22+, une clé API Claude (Anthropic) ou OpenAI.
+Prérequis : Node.js 22+.
 
 ```bash
 git clone https://github.com/CharnaceRegis/aidd-diagnostic.git
@@ -23,17 +23,25 @@ npm run build
 npm start
 ```
 
-Le CLI est interactif. Au lancement, un menu s'affiche :
+L'outil démarre en **mode heuristique** : aucune clé API requise, aucune dépendance externe. Il score les profils à partir des métriques mesurables (activité git, repo-context, analyse statique).
+
+### Menu
 
 ```
+  Mode : heuristique (sans LLM)
+
   1. Évaluer un profil ou un dossier
-  2. Configurer le provider LLM
+  2. Configurer un LLM (mode enrichi)
   3. Quitter
 ```
 
-À la première utilisation, l'outil demande de choisir un provider (Claude ou OpenAI) et de saisir la clé API. La configuration est sauvegardée dans `.env` (gitignored).
+L'option 1 demande un chemin vers un dossier de profil (ex : `profiles/perceval`) ou un dossier parent contenant plusieurs profils (ex : `profiles/`).
 
-On peut aussi exporter la clé en variable d'environnement :
+### Mode enrichi (optionnel)
+
+L'option 2 permet de configurer une clé API Claude ou OpenAI. En mode LLM, l'outil interprète aussi les pièces textuelles (déclaratif, sessions de travail) et génère des explications en langage naturel.
+
+On peut aussi passer la clé en variable d'environnement :
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -41,74 +49,92 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export OPENAI_API_KEY="sk-..."
 ```
 
+Si une clé est détectée au démarrage, l'outil passe automatiquement en mode LLM.
+
+## Format des profils
+
+Chaque profil est un **dossier** contenant jusqu'à 8 pièces :
+
+| Fichier | Contenu |
+| --- | --- |
+| `profile.json` | Identité, stack, taille d'équipe, liste des pièces disponibles |
+| `git-activity.json` | Activité git : taille des PR, parallélisme, CI, usage IA |
+| `pull-requests.json` | Détail des pull requests (optionnel) |
+| `code/` | Échantillons de code du dépôt |
+| `sonar-measures.json` | Analyse statique SonarQube |
+| `repo-context/` | Fichiers de contexte IA : CLAUDE.md, agents, skills, rules, hooks |
+| `declaratif.md` | Auto-évaluation (ce que la personne dit de sa pratique) |
+| `session.md` | Transcript d'une session de travail avec l'IA |
+
+Tous les profils n'ont pas les mêmes fichiers. L'outil s'adapte et signale les données manquantes via un indice de confiance.
+
 ## Qu'est-ce qui sort
 
 Pour chaque profil évalué, l'outil affiche :
 
-- **Le niveau AIDD** (White → Gold)
+- **Le niveau AIDD** (White → Gold, 7 niveaux)
 - **Le score de chaque axe** (Taille, Harness, Intervention, Parallèle)
 - **L'axe limitant** — celui qui empêche de monter
-- **Une explication** — pourquoi ce niveau, en termes clairs
+- **Une explication** — pourquoi ce niveau
 - **Un plan de progression** — quoi faire concrètement pour passer au niveau suivant
 
-En mode verbose, chaque axe affiche aussi son indice de confiance (`high`, `medium`, `low`) et la justification détaillée du LLM.
+Chaque axe affiche son indice de confiance (`high`, `medium`, `low`) et la justification détaillée.
 
 ## Architecture
 
 ```
-Profil (JSON/YAML)
+Dossier profil
   │
   ▼
 ┌─────────┐     ┌──────────┐     ┌──────────┐     ┌───────────┐
 │ Parser  │────▶│ Scorer   │────▶│ Engine   │────▶│ Explainer │
-│ (adapt) │     │ (LLM)    │     │ (min)    │     │ (LLM)     │
+│         │     │          │     │ (min)    │     │           │
 └─────────┘     └──────────┘     └──────────┘     └───────────┘
+                 heuristique      déterministe      templates
+                 ou LLM                             ou LLM
 ```
 
-Quatre modules dans un pipeline :
+| Module | Rôle | Mode heuristique | Mode LLM |
+| --- | --- | --- | --- |
+| **Parser** | Charge le dossier profil, inventorie les pièces | Identique | Identique |
+| **Scorer** | Évalue chaque axe (rank 0–6 + justification + confiance) | Règles sur les métriques mesurables | Interprétation du dossier complet par le LLM |
+| **Engine** | `min(4 axes)` → niveau global, axe limitant | Identique | Identique |
+| **Explainer** | Explication + plan de progression | Templates paramétrés | Génération en langage naturel |
 
-| Module | Rôle | LLM ? |
-| --- | --- | --- |
-| **Parser** (`parser.ts`) | Lit le profil JSON/YAML, normalise vers une structure interne. Gère les champs manquants sans crasher. | Non |
-| **Scorer** (`scorer.ts`) | Évalue chaque axe via Claude API. Un appel par axe, structured output (`tool_use`) pour fiabiliser la réponse. Retourne rank + justification + confiance. | Oui |
-| **Engine** (`engine.ts`) | Applique la règle `min(4 axes)` → niveau global. Identifie l'axe limitant. Purement déterministe. | Non |
-| **Explainer** (`explainer.ts`) | Génère l'explication et le plan de progression en langage naturel à partir du diagnostic structuré. | Oui |
+### Pourquoi deux modes
 
-La grille de référence AIDD (`grille.yml`) est chargée au démarrage et injectée dans les prompts. C'est la source de vérité pour les niveaux et les seuils.
+Le mode heuristique couvre 3 axes sur 4 avec une bonne fiabilité (Taille, Harness, Parallèle sont directement mesurables). L'axe Intervention est scoré avec des signaux indirects (corrections après ouverture, PR mergées sans édition) — fonctionnel mais moins fin que l'interprétation LLM d'une session de travail.
 
-### Pourquoi hybride LLM + algo
-
-Le scoring par axe demande d'interpréter des données potentiellement textuelles ou ambiguës — un LLM est bon pour ça. Mais la mécanique `min(4 axes)` doit être déterministe et testable, pas laissée à l'appréciation d'un modèle. La séparation permet de tester le moteur indépendamment du LLM.
+Le mode LLM enrichit le diagnostic en lisant les pièces textuelles (déclaratif, session) et en confrontant le déclaratif aux faits.
 
 ## Structure du projet
 
 ```
 aidd-diagnostic/
-├── grille.yml              # Référentiel AIDD (7 niveaux, 4 axes, échelles)
-├── fixtures/               # Profils de test
-│   └── profil-exemple.json
+├── grille.yml                # Référentiel AIDD (7 niveaux, 4 axes, échelles)
 ├── src/
-│   ├── types.ts            # Types partagés
-│   ├── grille.ts           # Chargement et validation de la grille YAML
-│   ├── parser.ts           # Adaptateur de profils JSON/YAML
-│   ├── scorer.ts           # Scoring par axe via Claude API
-│   ├── engine.ts           # Moteur déterministe min(4 axes)
-│   ├── explainer.ts        # Génération d'explication et progression
-│   ├── cli.ts              # Point d'entrée CLI
+│   ├── types.ts              # Types partagés (Profil, ProfilPieces, Diagnostic)
+│   ├── grille.ts             # Chargement de la grille YAML
+│   ├── parser.ts             # Chargement d'un dossier profil multi-pièces
+│   ├── heuristic-scorer.ts   # Scoring déterministe par règles
+│   ├── heuristic-explainer.ts # Explications et progression par templates
+│   ├── scorer.ts             # Scoring par axe via LLM (mode enrichi)
+│   ├── explainer.ts          # Explication via LLM (mode enrichi)
+│   ├── engine.ts             # Moteur déterministe min(4 axes)
+│   ├── config.ts             # Gestion de la config (.env, env vars)
+│   ├── setup.ts              # Setup interactif du provider LLM
+│   ├── cli.ts                # Point d'entrée CLI interactif
+│   ├── llm/                  # Abstraction LLM (Claude, OpenAI)
 │   └── prompts/
-│       └── score-axis.md   # Template de prompt pour le scoring
-├── METHOD.md               # Méthode en une page
+│       └── score-axis.md     # Template de prompt pour le scoring LLM
+├── METHOD.md                 # Méthode en une page
 ├── package.json
 └── tsconfig.json
 ```
 
 ## La méthode en bref
 
-Jette un œil à [METHOD.md](./METHOD.md) pour le détail. En résumé :
-
-Le référentiel AIDD définit 4 axes d'adoption de l'IA (Taille, Harness, Intervention, Parallèle) et 7 niveaux. Le niveau global d'un dev est le **minimum de ses 4 axes** — un seul axe faible tire tout le niveau vers le bas.
-
-L'outil demande à Claude d'évaluer chaque axe indépendamment à partir du profil, puis applique la règle du minimum de façon déterministe. Quand les données manquent, le score est attribué avec une confiance `low` plutôt qu'inventé.
+Voir [METHOD.md](./METHOD.md) pour le détail.
 
 ## Licence
 

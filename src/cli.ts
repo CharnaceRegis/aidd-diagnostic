@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createInterface, type Interface } from "node:readline";
+import { existsSync } from "node:fs";
 import { chargerGrille } from "./grille.js";
 import { chargerProfils } from "./parser.js";
 import { scorerProfil } from "./scorer.js";
@@ -64,7 +65,7 @@ async function diagnostiquerLLM(client: LLMClient, profil: Profil): Promise<Diag
   return { scores, niveauGlobal, axeLimitant, explication, progression, confianceGlobale };
 }
 
-function afficherDiagnostic(profil: Profil, diag: Diagnostic, verbose: boolean): void {
+function afficherDiagnostic(profil: Profil, diag: Diagnostic): void {
   const sep = "─".repeat(50);
 
   console.log(`\n${sep}`);
@@ -72,17 +73,12 @@ function afficherDiagnostic(profil: Profil, diag: Diagnostic, verbose: boolean):
   console.log(sep);
   console.log(`\n  Niveau AIDD : ${diag.niveauGlobal.label}`);
   console.log(`  Axe limitant : ${diag.axeLimitant}`);
-  if (verbose) {
-    console.log(`  Confiance globale : ${diag.confianceGlobale}`);
-  }
+  console.log(`  Confiance globale : ${diag.confianceGlobale}`);
 
   console.log(`\n  Scores par axe :`);
   for (const s of diag.scores) {
-    const conf = verbose ? ` [${s.confiance}]` : "";
-    console.log(`    ${s.axe.padEnd(14)} → rank ${s.rank}${conf}`);
-    if (verbose) {
-      console.log(`      ${s.justification}`);
-    }
+    console.log(`    ${s.axe.padEnd(14)} → rank ${s.rank} [${s.confiance}]`);
+    console.log(`      ${s.justification}`);
   }
 
   console.log(`\n  Explication :`);
@@ -109,10 +105,13 @@ async function lancerEvaluation(
   mode: Mode,
   client: LLMClient | null
 ): Promise<void> {
-  const chemin = (await ask(rl, "\n  Chemin du profil ou dossier : ")).trim();
+  const defaut = existsSync("profiles") ? "profiles/" : "";
+  const invite = defaut
+    ? `\n  Chemin du profil ou dossier [${defaut}] : `
+    : "\n  Chemin du profil ou dossier : ";
+  const saisie = (await ask(rl, invite)).trim();
+  const chemin = saisie || defaut;
   if (!chemin) return;
-
-  const verbose = (await ask(rl, "  Mode verbose ? (o/N) : ")).trim().toLowerCase() === "o";
 
   let profils: Profil[];
   try {
@@ -129,7 +128,7 @@ async function lancerEvaluation(
       const diagnostic = mode === "llm" && client
         ? await diagnostiquerLLM(client, profil)
         : await diagnostiquerHeuristique(profil);
-      afficherDiagnostic(profil, diagnostic, verbose);
+      afficherDiagnostic(profil, diagnostic);
     } catch (err) {
       console.error(
         `  Erreur sur le profil ${profil.id} :`,

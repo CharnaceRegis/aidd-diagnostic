@@ -13,7 +13,7 @@ Quatre axes, chacun indépendant :
 | **Intervention** | À quel moment intervient-il dans le travail de l'IA ? |
 | **Parallèle** | Combien de chantiers mène-t-il de front, habituellement ? |
 
-Le niveau global est le **minimum des 4 axes**. Un dev brillant sur 3 axes mais faible sur un seul est au niveau de son axe le plus faible — la grille AIDD est explicite là-dessus.
+Le niveau global est le **minimum des 4 axes**. Un dev brillant sur 3 axes mais faible sur un seul est au niveau de son axe le plus faible.
 
 ## Pourquoi cette approche
 
@@ -21,30 +21,43 @@ Le niveau global est le **minimum des 4 axes**. Un dev brillant sur 3 axes mais 
 
 La grille dit : « Un niveau n'est atteint que si **tous ses axes** le sont. » Faire une moyenne masquerait les faiblesses. Le `min()` reflète la réalité : un dev qui livre des features XL mais n'a aucun contexte IA en place n'est pas Silver — son harness le retient.
 
-### Un LLM pour interpréter, un algo pour trancher
+### Heuristique par défaut, LLM en option
 
-Les profils contiennent des données hétérogènes : du texte libre, des chiffres, des descriptions qualitatives. Un ensemble de règles codées en dur casserait sur la première formulation imprévue. Le LLM est bon pour comprendre « il reprend environ un tiers du code » et en déduire un rang sur l'axe Intervention.
+Les profils contiennent des données structurées (métriques git, fichiers repo-context, analyse statique) et des données textuelles (déclaratif, sessions de travail).
 
-Mais la règle du minimum, elle, n'a rien d'ambigu. La laisser au LLM introduirait de la variance inutile. Le moteur déterministe l'applique sans surprise.
+L'approche heuristique score les axes à partir des signaux mesurables. Ça couvre bien 3 axes sur 4 :
+
+| Axe | Signaux utilisés | Fiabilité |
+| --- | --- | --- |
+| **Taille** | Distribution de taille des PR × ratio de commits IA | Bonne |
+| **Harness** | Inventaire des fichiers repo-context (CLAUDE.md, agents, skills, rules, hooks) | Très bonne |
+| **Intervention** | Corrections après ouverture, PR mergées sans édition, taux de revert, CI | Correcte |
+| **Parallèle** | Médiane de branches concurrentes | Directe |
+
+L'axe Intervention est le moins fiable en heuristique : les métriques quantitatives (corrections, reverts) sont des signaux indirects. Le mode LLM lit les sessions de travail et le déclaratif pour un diagnostic plus fin.
 
 ### La confiance plutôt que l'invention
 
-Quand un profil ne donne pas assez d'information sur un axe, l'outil ne devine pas. Il attribue le score avec une confiance `low` et dit ce qui manque. Mieux vaut un diagnostic honnête qu'un diagnostic confiant et faux.
+Quand un profil ne donne pas assez d'information sur un axe, l'outil ne devine pas. Il attribue le score avec une confiance `low` et dit ce qui manque.
+
+### Le déclaratif n'est pas une preuve
+
+Ce que la personne dit de sa pratique (déclaratif.md) est traité comme un témoignage, pas un fait. En mode LLM, le prompt demande explicitement de confronter le déclaratif aux données factuelles. En cas de contradiction, les faits priment.
 
 ## Comment ça marche, concrètement
 
-1. **Parsing** — Le profil (JSON ou YAML) est chargé et normalisé. Les champs manquants deviennent `null`, pas des erreurs.
+1. **Parsing** — Le dossier profil est chargé. Chaque pièce (git-activity, code, repo-context, déclaratif, session) est identifiée et structurée. Les pièces absentes ne sont pas des erreurs.
 
-2. **Scoring par axe** — Pour chaque axe, le profil est envoyé à Claude avec la définition de l'axe et son échelle complète. Le modèle retourne un rank (0–6), une justification et un indice de confiance, le tout en structured output pour éviter les problèmes de parsing.
+2. **Scoring par axe** — En mode heuristique, des règles déterministes extraient les signaux pertinents de chaque pièce et les mappent sur l'échelle (rank 0–6). En mode LLM, seules les pièces pertinentes à l'axe sont envoyées au modèle (pas tout le dossier à chaque axe) pour un scoring plus fin.
 
 3. **Niveau global** — Le moteur prend les 4 scores et applique `min()`. Il identifie l'axe limitant.
 
-4. **Explication et progression** — À partir du diagnostic structuré, le LLM génère une explication en langage clair et un plan d'action ciblé sur l'axe limitant.
+4. **Explication et progression** — En mode heuristique, des templates paramétrés par l'axe limitant et le niveau cible génèrent le diagnostic. En mode LLM, le modèle produit une explication et un plan en langage naturel.
 
 ## Les limites
 
-- **Le scoring n'est pas 100 % déterministe.** Deux exécutions sur le même profil peuvent donner des justifications différentes. Le rank, lui, est stable dans la grande majorité des cas grâce au cadrage du prompt et au structured output.
+- **L'heuristique ne lit pas le texte.** Les pièces narratives (déclaratif, session) ne sont exploitées qu'en mode LLM. Un profil dont la richesse est principalement textuelle sera mieux diagnostiqué avec un LLM.
 
-- **La qualité dépend du profil.** Un profil vague donne un diagnostic vague. L'outil le signale (confiance `low`), mais il ne peut pas inventer ce qui n'est pas décrit.
+- **La qualité dépend du profil.** Un profil incomplet donne un diagnostic incertain. L'outil le signale (confiance `low`), mais il ne peut pas inventer ce qui n'est pas fourni.
 
-- **Pas de validation terrain.** L'outil évalue ce que le profil *dit*, pas ce que le dev *fait*. C'est un diagnostic sur déclaration, pas un audit de dépôt.
+- **Les seuils heuristiques sont calibrés sur 4 profils.** Ils couvrent les niveaux Red à Copper. Des profils Silver ou Gold n'ont pas été testés — les seuils pourraient nécessiter un ajustement.
