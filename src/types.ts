@@ -64,7 +64,6 @@ export interface ProfileMeta {
 /** Dossier de preuves d'un profil */
 export interface Profil {
   id: string;
-  nom: string | null;
   meta: ProfileMeta;
   pieces: ProfilPieces;
 }

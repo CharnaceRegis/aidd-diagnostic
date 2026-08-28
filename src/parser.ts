@@ -36,7 +36,6 @@ function chargerUnProfil(dossier: string): Profil {
 
   return {
     id: meta.profile_id,
-    nom: meta.profile_id,
     meta,
     pieces: chargerPieces(dossier, meta.available),
   };

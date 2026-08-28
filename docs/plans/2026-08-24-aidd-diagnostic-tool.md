@@ -1,7 +1,7 @@
 # Outil de diagnostic AIDD — LAIVEL UP
 
 - **Date** : 2026-08-24
-- **Statut** : pending
+- **Statut** : done
 
 ## Objectif
 

@@ -69,7 +69,7 @@ function afficherDiagnostic(profil: Profil, diag: Diagnostic): void {
   const sep = "─".repeat(50);
 
   console.log(`\n${sep}`);
-  console.log(`  Profil : ${profil.nom ?? profil.id}`);
+  console.log(`  Profil : ${profil.id}`);
   console.log(sep);
   console.log(`\n  Niveau AIDD : ${diag.niveauGlobal.label}`);
   console.log(`  Axe limitant : ${diag.axeLimitant}`);

@@ -254,8 +254,8 @@ function scoreIntervention(pieces: ProfilPieces): AxeScore {
         confiance);
     }
     if (autonomieRatio >= 0.25) {
-      // Ranks 3 et 4 = « aux étapes clés ». Différencier par le volume absolu.
-      const rank = mergedNoEdit >= 30 ? 4 : 3;
+      // Rank 4 si le ratio est solide, ou si le volume absolu compense un ratio plus bas
+      const rank = autonomieRatio >= 0.35 || mergedNoEdit >= 40 ? 4 : 3;
       return axeScore("intervention", rank,
         `Corrections faibles (médiane: ${correctionMedian}), ${pct(autonomieRatio)} mergées sans édition (${mergedNoEdit} PR). Intervention aux étapes clés.`,
         confiance);
@@ -301,7 +301,7 @@ function scoreParallele(pieces: ProfilPieces): AxeScore {
     // L'échelle donne rank 1, 2 et 3 = "1 branche" — pas de discrimination possible
     // On attribue rank 3 (le max pour median 1) car l'axe ne pénalise pas en dessous de 3 branches
     return axeScore("parallele", 3,
-      `${median} branche concurrente en médiane (max ${max}). L'échelle ne discrimine pas en dessous de 3 branches concurrentes.`,
+      `${median} branche concurrente en médiane (max ${max}). Travail séquentiel ou faiblement parallèle.`,
       "high");
   }
 
