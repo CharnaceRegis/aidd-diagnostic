@@ -51,9 +51,46 @@ export interface Diagnostic {
   confianceGlobale: Confiance;
 }
 
-/** Profil normalisé — chaque champ peut être null si absent du profil brut */
+export interface ProfileMeta {
+  profile_id: string;
+  role: string;
+  experience_years: number;
+  stack: string[];
+  team_size: number;
+  available: string[];
+  note?: string;
+}
+
+/** Dossier de preuves d'un profil */
 export interface Profil {
   id: string;
   nom: string | null;
-  donnees: Record<string, unknown>;
+  meta: ProfileMeta;
+  pieces: ProfilPieces;
+}
+
+export interface ProfilPieces {
+  gitActivity: Record<string, unknown> | null;
+  pullRequests: Record<string, unknown> | null;
+  sonarMeasures: Record<string, unknown> | null;
+  declaratif: string | null;
+  session: string | null;
+  code: CodeFile[];
+  repoContext: RepoContextSummary | null;
+}
+
+export interface CodeFile {
+  path: string;
+  content: string;
+}
+
+export interface RepoContextSummary {
+  claudeMd: string | null;
+  agentsMd: string | null;
+  agentFiles: string[];
+  skillFiles: string[];
+  ruleFiles: string[];
+  hookFiles: string[];
+  settingsJson: Record<string, unknown> | null;
+  docsFiles: string[];
 }
