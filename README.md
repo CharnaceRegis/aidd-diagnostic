@@ -35,11 +35,13 @@ L'outil démarre en **mode heuristique** : aucune clé API requise, aucune dépe
   3. Quitter
 ```
 
-L'option 1 demande un chemin vers un dossier de profil (ex : `profiles/perceval`) ou un dossier parent contenant plusieurs profils (ex : `profiles/`).
+L'option 1 demande un chemin vers un dossier de profil (ex : `profiles/perceval`) ou un dossier parent contenant plusieurs profils (ex : `profiles/`). Si un dossier `profiles/` existe à la racine, il est proposé par défaut.
 
 ### Mode enrichi (optionnel)
 
 L'option 2 permet de configurer une clé API Claude ou OpenAI. En mode LLM, l'outil interprète aussi les pièces textuelles (déclaratif, sessions de travail) et génère des explications en langage naturel.
+
+On peut basculer entre les deux modes à tout moment sans reconfigurer.
 
 On peut aussi passer la clé en variable d'environnement :
 
@@ -72,13 +74,12 @@ Tous les profils n'ont pas les mêmes fichiers. L'outil s'adapte et signale les 
 
 Pour chaque profil évalué, l'outil affiche :
 
-- **Le niveau AIDD** (White → Gold, 7 niveaux)
-- **Le score de chaque axe** (Taille, Harness, Intervention, Parallèle)
+- **Une échelle visuelle** des 7 niveaux avec le niveau courant marqué
+- **Le score de chaque axe** (Taille, Harness, Intervention, En parallèle) avec justification
 - **L'axe limitant** — celui qui empêche de monter
-- **Une explication** — pourquoi ce niveau
 - **Un plan de progression** — quoi faire concrètement pour passer au niveau suivant
 
-Chaque axe affiche son indice de confiance (`high`, `medium`, `low`) et la justification détaillée.
+Si les données sont insuffisantes sur un axe, un avertissement le signale.
 
 ## Architecture
 
