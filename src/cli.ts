@@ -30,10 +30,12 @@ function afficherBanniere(): void {
 `);
 }
 
-function afficherMenuHeuristique(): void {
+function afficherMenuHeuristique(hasConfig: boolean): void {
   console.log("  Mode : heuristique (sans LLM)\n");
   console.log("  1. Évaluer un profil ou un dossier");
-  console.log("  2. Configurer un LLM (mode enrichi)");
+  console.log(hasConfig
+    ? "  2. Repasser en mode LLM"
+    : "  2. Configurer un LLM (mode enrichi)");
   console.log("  3. Quitter\n");
 }
 
@@ -122,9 +124,10 @@ async function lancerEvaluation(
 ): Promise<void> {
   const defaut = existsSync("profiles") ? "profiles/" : "";
   const invite = defaut
-    ? `\n  Chemin du profil ou dossier [${defaut}] : `
-    : "\n  Chemin du profil ou dossier : ";
+    ? `\n  Chemin du profil ou dossier [${defaut}] (q = retour) : `
+    : "\n  Chemin du profil ou dossier (vide = retour) : ";
   const saisie = (await ask(rl, invite)).trim();
+  if (saisie.toLowerCase() === "q") return;
   const chemin = saisie || defaut;
   if (!chemin) return;
 
@@ -155,18 +158,11 @@ async function lancerEvaluation(
 }
 
 async function lancerSetup(rl: Interface): Promise<Config | null> {
-  try {
-    return await setup(rl);
-  } catch (err) {
-    console.error(`\n  ${err instanceof Error ? err.message : err}\n`);
-    return null;
-  }
+  return setup(rl);
 }
 
 async function main(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-
-  afficherBanniere();
 
   let mode: Mode = "heuristique";
   let config: Config | null = lireConfig();
@@ -178,10 +174,13 @@ async function main(): Promise<void> {
   }
 
   while (true) {
+    console.clear();
+    afficherBanniere();
+
     if (mode === "llm" && config) {
       afficherMenuLLM(config.provider);
     } else {
-      afficherMenuHeuristique();
+      afficherMenuHeuristique(config !== null);
     }
 
     const choix = (await ask(rl, "  Choix : ")).trim();
@@ -192,11 +191,16 @@ async function main(): Promise<void> {
           await lancerEvaluation(rl, mode, null);
           break;
         case "2": {
-          const nouveau = await lancerSetup(rl);
-          if (nouveau) {
-            config = nouveau;
-            client = createClient(config.provider, config.apiKey);
+          if (config) {
+            client = client ?? createClient(config.provider, config.apiKey);
             mode = "llm";
+          } else {
+            const nouveau = await lancerSetup(rl);
+            if (nouveau) {
+              config = nouveau;
+              client = createClient(config.provider, config.apiKey);
+              mode = "llm";
+            }
           }
           break;
         }
@@ -222,9 +226,6 @@ async function main(): Promise<void> {
         }
         case "3":
           mode = "heuristique";
-          client = null;
-          config = null;
-          console.log("\n  Repassé en mode heuristique.\n");
           break;
         case "4":
           console.log("\n  À bientôt.\n");

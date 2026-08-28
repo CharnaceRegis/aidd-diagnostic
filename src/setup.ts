@@ -7,27 +7,33 @@ function question(rl: Interface, q: string): Promise<string> {
   return new Promise((resolve) => rl.question(q, resolve));
 }
 
-export async function setup(rlExterne?: Interface): Promise<Config> {
+export async function setup(rlExterne?: Interface): Promise<Config | null> {
   const rl = rlExterne ?? createInterface({ input: process.stdin, output: process.stdout });
 
   console.log("\n  Configuration du provider LLM\n");
   console.log("    1. Claude (Anthropic)");
-  console.log("    2. OpenAI (GPT)\n");
+  console.log("    2. OpenAI (GPT)");
+  console.log("    q. Retour\n");
 
   let provider: Provider;
   while (true) {
-    const choix = (await question(rl, "  Choix (1 ou 2) : ")).trim();
+    const choix = (await question(rl, "  Choix : ")).trim().toLowerCase();
+    if (choix === "q" || choix === "") {
+      if (!rlExterne) rl.close();
+      return null;
+    }
     if (choix === "1") { provider = "claude"; break; }
     if (choix === "2") { provider = "openai"; break; }
-    console.log("  Tape 1 ou 2.");
+    console.log("  Tape 1, 2 ou q.");
   }
 
   const label = provider === "claude" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
-  const apiKey = (await question(rl, `\n  ${label} : `)).trim();
+  const apiKey = (await question(rl, `\n  ${label} (vide = retour) : `)).trim();
 
   if (!apiKey) {
     if (!rlExterne) rl.close();
-    throw new Error("Clé API vide, abandon.");
+    console.log("\n  Annulé.\n");
+    return null;
   }
 
   if (!rlExterne) rl.close();
