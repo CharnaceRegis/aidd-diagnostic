@@ -259,7 +259,10 @@ function scoreIntervention(pieces: ProfilPieces): AxeScore {
   const prs = lirePRs(pieces);
   const medReview = medianeReviewComments(prs);
   const ajustPR = prs.length > 0 && medReview > 3 ? 1 : 0;
-  const ajustTotal = ajustTexte + ajustPR;
+
+  // Ajustement body PR : documentation structurée → +1
+  const ajustBody = textSignals.prBodyQualite >= 2 ? 1 : 0;
+  const ajustTotal = ajustTexte + ajustPR + ajustBody;
 
   const suffixeTexte = ajustTexte > 0
     ? " Session : cadrage solide en amont."
@@ -269,12 +272,15 @@ function scoreIntervention(pieces: ProfilPieces): AxeScore {
   const suffixePR = ajustPR > 0
     ? ` Review active (médiane ${medReview.toFixed(1)} comments/PR).`
     : "";
+  const suffixeBody = ajustBody > 0
+    ? " PR documentées (contexte, review, scope)."
+    : "";
 
   // Beaucoup de corrections après ouverture + reverts = intervention massive
   if (correctionMedian >= 4 || revertRatio > 0.05) {
     const rank = clampRank(1 + ajustTotal);
     return axeScore("intervention", rank,
-      `Corrections fréquentes après ouverture (médiane: ${correctionMedian}) et ${reverted} PR revertées. Intervention systématique après coup.${suffixeTexte}${suffixePR}`,
+      `Corrections fréquentes après ouverture (médiane: ${correctionMedian}) et ${reverted} PR revertées. Intervention systématique après coup.${suffixeTexte}${suffixePR}${suffixeBody}`,
       confiance);
   }
 
@@ -282,7 +288,7 @@ function scoreIntervention(pieces: ProfilPieces): AxeScore {
   if (correctionMedian >= 2 || failureRate > 0.2) {
     const rank = clampRank(2 + ajustTotal);
     return axeScore("intervention", rank,
-      `Corrections après ouverture (médiane: ${correctionMedian}), taux d'échec CI ${pct(failureRate)}. Intervention partielle après coup.${suffixeTexte}${suffixePR}`,
+      `Corrections après ouverture (médiane: ${correctionMedian}), taux d'échec CI ${pct(failureRate)}. Intervention partielle après coup.${suffixeTexte}${suffixePR}${suffixeBody}`,
       confiance);
   }
 
@@ -291,14 +297,14 @@ function scoreIntervention(pieces: ProfilPieces): AxeScore {
     if (autonomieRatio >= 0.5 && runsToGreen <= 1) {
       const rank = clampRank(5 + ajustTotal);
       return axeScore("intervention", rank,
-        `${pct(autonomieRatio)} des PR mergées sans édition humaine, CI verte du premier coup. Intervention minimale une fois la tâche cadrée.${suffixeTexte}${suffixePR}`,
+        `${pct(autonomieRatio)} des PR mergées sans édition humaine, CI verte du premier coup. Intervention minimale une fois la tâche cadrée.${suffixeTexte}${suffixePR}${suffixeBody}`,
         confiance);
     }
     if (autonomieRatio >= 0.25) {
       const baseRank = autonomieRatio >= 0.35 || mergedNoEdit >= 40 ? 4 : 3;
       const rank = clampRank(baseRank + ajustTotal);
       return axeScore("intervention", rank,
-        `Corrections faibles (médiane: ${correctionMedian}), ${pct(autonomieRatio)} mergées sans édition (${mergedNoEdit} PR). Intervention aux étapes clés.${suffixeTexte}${suffixePR}`,
+        `Corrections faibles (médiane: ${correctionMedian}), ${pct(autonomieRatio)} mergées sans édition (${mergedNoEdit} PR). Intervention aux étapes clés.${suffixeTexte}${suffixePR}${suffixeBody}`,
         confiance);
     }
   }
@@ -307,14 +313,14 @@ function scoreIntervention(pieces: ProfilPieces): AxeScore {
   if (correctionMedian <= 2) {
     const rank = clampRank(2 + ajustTotal);
     return axeScore("intervention", rank,
-      `Corrections modérées (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention après coup sur une partie.${suffixeTexte}${suffixePR}`,
+      `Corrections modérées (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention après coup sur une partie.${suffixeTexte}${suffixePR}${suffixeBody}`,
       confiance);
   }
 
   // Cas résiduel
   const rank = clampRank(1 + ajustTotal);
   return axeScore("intervention", rank,
-    `Corrections fréquentes (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention systématique.${suffixeTexte}${suffixePR}`,
+    `Corrections fréquentes (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention systématique.${suffixeTexte}${suffixePR}${suffixeBody}`,
     confiance);
 }
 

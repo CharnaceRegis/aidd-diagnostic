@@ -7,6 +7,8 @@ export interface TextSignals {
   sessionCorrections: number;
   /** 0–2 : niveau de méthodologie déclaré */
   declaratifMethode: number;
+  /** 0–2 : qualité de documentation des PR (body structuré) */
+  prBodyQualite: number;
   /** Au moins un texte exploitable */
   hasTexts: boolean;
 }
@@ -75,12 +77,14 @@ const METHODE_PASSIVE = [
 export function analyserTextes(pieces: ProfilPieces): TextSignals {
   const hasSession = !!pieces.session;
   const hasDeclaratif = !!pieces.declaratif;
+  const prBodies = extrairePRBodies(pieces);
 
   return {
     sessionFraming: hasSession ? analyserFraming(pieces.session!) : 0,
     sessionCorrections: hasSession ? compterCorrections(pieces.session!) : 0,
     declaratifMethode: hasDeclaratif ? analyserMethode(pieces.declaratif!) : 0,
-    hasTexts: hasSession || hasDeclaratif,
+    prBodyQualite: prBodies.length > 0 ? analyserPRBodies(prBodies) : 0,
+    hasTexts: hasSession || hasDeclaratif || prBodies.length > 0,
   };
 }
 
@@ -114,6 +118,36 @@ function analyserMethode(declaratif: string): number {
   if (score >= 3) return 2;
   if (score >= 1) return 1;
   return 0;
+}
+
+// Sections structurées dans un body de PR
+const PR_BODY_SECTIONS = [
+  /^##\s+(why|context|the problem|problem|motivation)/im,
+  /^##\s+(what (i )?(change|did|checked)|changes)/im,
+  /^##\s+(what (i )?(did not|am not) do|not doing|still to do|out of scope)/im,
+  /^##\s+(review|review thread)/im,
+  /^##\s+(how|approach|design|solution)/im,
+  /^##\s+(test|what (i )?checked|verification)/im,
+];
+
+/** Évalue la qualité de documentation des PR à partir de leurs bodies */
+function analyserPRBodies(bodies: string[]): number {
+  let meilleur = 0;
+  for (const body of bodies) {
+    const sections = PR_BODY_SECTIONS.filter((p) => p.test(body)).length;
+    if (sections >= 3) return 2;
+    if (sections >= 1 && sections > meilleur) meilleur = 1;
+  }
+  return meilleur;
+}
+
+function extrairePRBodies(pieces: ProfilPieces): string[] {
+  if (!pieces.pullRequests) return [];
+  const raw = pieces.pullRequests;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((pr: Record<string, unknown>) => typeof pr.body === "string" && pr.body.length > 0)
+    .map((pr: Record<string, unknown>) => pr.body as string);
 }
 
 function extrairePremierBlocPersonne(session: string): string | null {
