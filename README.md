@@ -51,8 +51,6 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export OPENAI_API_KEY="sk-..."
 ```
 
-Si une clé est détectée au démarrage, l'outil passe automatiquement en mode LLM.
-
 ## Format des profils
 
 Chaque profil est un **dossier** contenant jusqu'à 8 pièces :
@@ -80,6 +78,8 @@ Pour chaque profil évalué, l'outil affiche :
 - **Un plan de progression** — quoi faire concrètement pour passer au niveau suivant
 
 Si les données sont insuffisantes sur un axe, un avertissement le signale.
+
+Après l'affichage, l'outil propose de sauvegarder les résultats en `.txt` ou `.md` (un fichier par profil).
 
 ## Architecture
 

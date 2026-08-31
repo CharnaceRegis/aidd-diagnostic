@@ -60,4 +60,4 @@ Ce que la personne dit de sa pratique (déclaratif.md) est traité comme un tém
 
 - **La qualité dépend du profil.** Un profil incomplet donne un diagnostic incertain. L'outil le signale (confiance `low`), mais il ne peut pas inventer ce qui n'est pas fourni.
 
-- **Les seuils heuristiques sont calibrés sur 4 profils.** Ils couvrent les niveaux Red à Copper. Des profils Silver ou Gold n'ont pas été testés — les seuils pourraient nécessiter un ajustement.
+- **Les seuils heuristiques sont calibrés sur 6 profils.** Ils couvrent les niveaux Red à Copper. Des profils Silver ou Gold n'ont pas été testés — les seuils pourraient nécessiter un ajustement.
