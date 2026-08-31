@@ -7,6 +7,7 @@ import type {
   ProfilPieces,
   RepoContextSummary,
 } from "./types.js";
+import { analyserTextes } from "./text-signals.js";
 
 export function scorerProfilHeuristique(
   grille: Grille,
@@ -207,8 +208,16 @@ function hasBoucles(
 
 function scoreIntervention(pieces: ProfilPieces): AxeScore {
   const ga = pieces.gitActivity;
+  const textSignals = analyserTextes(pieces);
+
+  // Sans données git ni texte, on ne peut rien dire
+  if (!ga && !textSignals.hasTexts) {
+    return axeScore("intervention", 0, "Pas de données d'activité git ni de texte.", "low");
+  }
+
+  // Sans données git mais avec du texte : scoring dégradé sur le texte seul
   if (!ga) {
-    return axeScore("intervention", 0, "Pas de données d'activité git.", "low");
+    return scoreInterventionTexteSeul(textSignals);
   }
 
   const pr = ga["pull_requests"] as Record<string, unknown> | undefined;
@@ -225,54 +234,94 @@ function scoreIntervention(pieces: ProfilPieces): AxeScore {
   const failureRate = (ci?.["failure_rate"] as number) ?? 0;
   const runsToGreen = (ci?.["median_runs_to_green"] as number) ?? 1;
 
-  // Ratio de PR mergées sans édition humaine
   const autonomieRatio = total > 0 ? mergedNoEdit / total : 0;
   const revertRatio = total > 0 ? reverted / total : 0;
 
-  // Confiance dégradée sans session.md
-  const confiance: Confiance = pieces.session ? "high" : "medium";
+  // Confiance : haute si texte disponible, moyenne sinon
+  const confiance: Confiance = textSignals.hasTexts ? "high" : "medium";
+
+  // Ajustement textuel : cadrage fort en session → +1, corrections fréquentes en session → -1
+  const ajustTexte = textSignals.sessionFraming >= 2 ? 1
+    : textSignals.sessionCorrections >= 4 ? -1
+    : 0;
+  const suffixeTexte = ajustTexte > 0
+    ? " Session : cadrage solide en amont."
+    : ajustTexte < 0
+    ? " Session : corrections fréquentes en cours de route."
+    : textSignals.hasTexts ? " Session analysée, cohérente avec les métriques." : "";
 
   // Beaucoup de corrections après ouverture + reverts = intervention massive
   if (correctionMedian >= 4 || revertRatio > 0.05) {
-    return axeScore("intervention", 1,
-      `Corrections fréquentes après ouverture (médiane: ${correctionMedian}) et ${reverted} PR revertées. Intervention systématique après coup.`,
+    const rank = clampRank(1 + ajustTexte);
+    return axeScore("intervention", rank,
+      `Corrections fréquentes après ouverture (médiane: ${correctionMedian}) et ${reverted} PR revertées. Intervention systématique après coup.${suffixeTexte}`,
       confiance);
   }
 
   // Corrections modérées
   if (correctionMedian >= 2 || failureRate > 0.2) {
-    return axeScore("intervention", 2,
-      `Corrections après ouverture (médiane: ${correctionMedian}), taux d'échec CI ${pct(failureRate)}. Intervention partielle après coup.`,
+    const rank = clampRank(2 + ajustTexte);
+    return axeScore("intervention", rank,
+      `Corrections après ouverture (médiane: ${correctionMedian}), taux d'échec CI ${pct(failureRate)}. Intervention partielle après coup.${suffixeTexte}`,
       confiance);
   }
 
   // Peu de corrections, autonomie correcte
   if (correctionMedian <= 1 && failureRate <= 0.1) {
     if (autonomieRatio >= 0.5 && runsToGreen <= 1) {
-      return axeScore("intervention", 5,
-        `${pct(autonomieRatio)} des PR mergées sans édition humaine, CI verte du premier coup. Intervention minimale une fois la tâche cadrée.`,
+      const rank = clampRank(5 + ajustTexte);
+      return axeScore("intervention", rank,
+        `${pct(autonomieRatio)} des PR mergées sans édition humaine, CI verte du premier coup. Intervention minimale une fois la tâche cadrée.${suffixeTexte}`,
         confiance);
     }
     if (autonomieRatio >= 0.25) {
-      // Rank 4 si le ratio est solide, ou si le volume absolu compense un ratio plus bas
-      const rank = autonomieRatio >= 0.35 || mergedNoEdit >= 40 ? 4 : 3;
+      const baseRank = autonomieRatio >= 0.35 || mergedNoEdit >= 40 ? 4 : 3;
+      const rank = clampRank(baseRank + ajustTexte);
       return axeScore("intervention", rank,
-        `Corrections faibles (médiane: ${correctionMedian}), ${pct(autonomieRatio)} mergées sans édition (${mergedNoEdit} PR). Intervention aux étapes clés.`,
+        `Corrections faibles (médiane: ${correctionMedian}), ${pct(autonomieRatio)} mergées sans édition (${mergedNoEdit} PR). Intervention aux étapes clés.${suffixeTexte}`,
         confiance);
     }
   }
 
   // Corrections légères ou autonomie partielle
   if (correctionMedian <= 2) {
-    return axeScore("intervention", 2,
-      `Corrections modérées (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention après coup sur une partie.`,
+    const rank = clampRank(2 + ajustTexte);
+    return axeScore("intervention", rank,
+      `Corrections modérées (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention après coup sur une partie.${suffixeTexte}`,
       confiance);
   }
 
   // Cas résiduel
-  return axeScore("intervention", 1,
-    `Corrections fréquentes (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention systématique.`,
+  const rank = clampRank(1 + ajustTexte);
+  return axeScore("intervention", rank,
+    `Corrections fréquentes (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention systématique.${suffixeTexte}`,
     confiance);
+}
+
+/** Scoring Intervention quand seul le texte est disponible (pas de git) */
+function scoreInterventionTexteSeul(signals: ReturnType<typeof analyserTextes>): AxeScore {
+  const { sessionFraming, sessionCorrections, declaratifMethode } = signals;
+
+  // Combiner session + déclaratif
+  const score = sessionFraming + declaratifMethode;
+
+  if (score >= 3) {
+    return axeScore("intervention", 3,
+      `Cadrage structuré en session et méthodologie déclarée solide. Sans données git, rank plafonné.`,
+      "low");
+  }
+  if (score >= 1) {
+    return axeScore("intervention", 2,
+      `Signes de cadrage dans le texte mais pas de données git pour confirmer.`,
+      "low");
+  }
+  return axeScore("intervention", 1,
+    `Texte disponible mais peu de signes de méthodologie structurée.`,
+    "low");
+}
+
+function clampRank(rank: number): number {
+  return Math.max(0, Math.min(6, rank));
 }
 
 // --- Parallèle ---
