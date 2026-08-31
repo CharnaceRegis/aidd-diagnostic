@@ -49,6 +49,7 @@ export interface Diagnostic {
   explication: string;
   progression: string;
   confianceGlobale: Confiance;
+  warnings: string[];
 }
 
 export interface ProfileMeta {
@@ -81,6 +82,20 @@ export interface ProfilPieces {
 export interface CodeFile {
   path: string;
   content: string;
+}
+
+export interface PullRequestEntry {
+  number: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  merged: boolean;
+  changed_files: number;
+  additions: number;
+  deletions: number;
+  commits: number;
+  review_comments: number;
+  body: string | null;
 }
 
 export interface RepoContextSummary {

@@ -12,6 +12,7 @@ import { expliquerHeuristique } from "./heuristic-explainer.js";
 import { lireConfig } from "./config.js";
 import { setup } from "./setup.js";
 import { createClient, type LLMClient } from "./llm/index.js";
+import { autoCheck } from "./check.js";
 import type { Config } from "./config.js";
 import type { AxeId, AxeScore, Diagnostic, Grille, Profil } from "./types.js";
 
@@ -50,21 +51,21 @@ function afficherMenuLLM(provider: string): void {
 async function diagnostiquerHeuristique(profil: Profil): Promise<Diagnostic> {
   const grille = chargerGrille();
   const scores = scorerProfilHeuristique(grille, profil);
-  const { niveauGlobal, axeLimitant, confianceGlobale } = evaluer(grille, scores);
+  const { niveauGlobal, axeLimitant, confianceGlobale, warnings } = evaluer(grille, scores);
   const { explication, progression } = expliquerHeuristique(
     grille, scores, niveauGlobal, axeLimitant as AxeId
   );
-  return { scores, niveauGlobal, axeLimitant, explication, progression, confianceGlobale };
+  return { scores, niveauGlobal, axeLimitant, explication, progression, confianceGlobale, warnings };
 }
 
 async function diagnostiquerLLM(client: LLMClient, profil: Profil): Promise<Diagnostic> {
   const grille = chargerGrille();
   const scores = await scorerProfil(client, grille, profil);
-  const { niveauGlobal, axeLimitant, confianceGlobale } = evaluer(grille, scores);
+  const { niveauGlobal, axeLimitant, confianceGlobale, warnings } = evaluer(grille, scores);
   const { explication, progression } = await expliquer(
     client, grille, scores, niveauGlobal, axeLimitant
   );
-  return { scores, niveauGlobal, axeLimitant, explication, progression, confianceGlobale };
+  return { scores, niveauGlobal, axeLimitant, explication, progression, confianceGlobale, warnings };
 }
 
 const LABELS_AXES: Record<string, string> = {
@@ -107,6 +108,13 @@ function formaterDiagnostic(profil: Profil, diag: Diagnostic): string {
     lignes.push(`    ${s.justification}\n`);
   }
 
+  if (diag.warnings.length > 0) {
+    lignes.push("");
+    for (const w of diag.warnings) {
+      lignes.push(`  ⚠ ${w}`);
+    }
+  }
+
   lignes.push(`\n  Progression :`);
   lignes.push(
     diag.progression
@@ -144,6 +152,13 @@ function formaterDiagnosticMd(profil: Profil, diag: Diagnostic): string {
     const label = LABELS_AXES[s.axe] ?? s.axe;
     lignes.push(`**${label}** : ${s.justification}`);
     lignes.push("");
+  }
+
+  if (diag.warnings.length > 0) {
+    for (const w of diag.warnings) {
+      lignes.push(`> ⚠ ${w}`);
+      lignes.push("");
+    }
   }
 
   lignes.push("### Progression");
@@ -227,6 +242,13 @@ async function lancerSetup(rl: Interface): Promise<Config | null> {
 }
 
 async function main(): Promise<void> {
+  if (process.argv.includes("--check")) {
+    const idx = process.argv.indexOf("--check");
+    const chemin = process.argv[idx + 1] || "profiles/";
+    await autoCheck(chemin);
+    return;
+  }
+
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
   let mode: Mode = "heuristique";

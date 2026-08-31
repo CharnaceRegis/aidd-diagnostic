@@ -5,6 +5,7 @@ import type {
   Grille,
   Profil,
   ProfilPieces,
+  PullRequestEntry,
   RepoContextSummary,
 } from "./types.js";
 import { analyserTextes } from "./text-signals.js";
@@ -54,21 +55,30 @@ function scoreTaille(pieces: ProfilPieces): AxeScore {
   const tailleDominante = taillePRDominante(dist);
 
   // Si l'IA est à peine utilisée, la taille des features IA est limitée
+  // Enrichissement Sonar
+  const ncloc = lireSonarMetrique(pieces, "ncloc");
+  const coverage = lireSonarMetrique(pieces, "coverage");
+  const suffixeSonar = ncloc !== null
+    ? ` Projet : ${Math.round(ncloc / 1000)}k lignes${coverage !== null ? `, couverture ${coverage}%` : ""}.`
+    : "";
+  // Si Sonar confirme coverage > 60% avec ratio IA élevé → confiance haute
+  const sonarBoost = coverage !== null && coverage > 60 && aiRatio >= 0.3;
+
   if (aiRatio < 0.05) {
     return axeScore("taille", Math.min(tailleDominante, 1),
-      `Ratio IA très faible (${pct(aiRatio)}). L'IA est utilisée ponctuellement, les features IA restent petites.`,
+      `Ratio IA très faible (${pct(aiRatio)}). L'IA est utilisée ponctuellement, les features IA restent petites.${suffixeSonar}`,
       "high");
   }
 
   if (aiRatio < 0.3) {
     return axeScore("taille", Math.min(tailleDominante, 2),
-      `Ratio IA modéré (${pct(aiRatio)}). L'IA contribue mais pas sur les plus grosses features.`,
-      "medium");
+      `Ratio IA modéré (${pct(aiRatio)}). L'IA contribue mais pas sur les plus grosses features.${suffixeSonar}`,
+      sonarBoost ? "high" : "medium");
   }
 
   // IA bien intégrée, la taille des PR reflète la taille des features IA
   return axeScore("taille", tailleDominante,
-    `Ratio IA élevé (${pct(aiRatio)}), taille dominante des PR : ${TAILLE_LABELS[tailleDominante]}.`,
+    `Ratio IA élevé (${pct(aiRatio)}), taille dominante des PR : ${TAILLE_LABELS[tailleDominante]}.${suffixeSonar}`,
     "high");
 }
 
@@ -244,57 +254,67 @@ function scoreIntervention(pieces: ProfilPieces): AxeScore {
   const ajustTexte = textSignals.sessionFraming >= 2 ? 1
     : textSignals.sessionCorrections >= 4 ? -1
     : 0;
+
+  // Ajustement PR : review active (médiane > 3 comments/PR) → +1
+  const prs = lirePRs(pieces);
+  const medReview = medianeReviewComments(prs);
+  const ajustPR = prs.length > 0 && medReview > 3 ? 1 : 0;
+  const ajustTotal = ajustTexte + ajustPR;
+
   const suffixeTexte = ajustTexte > 0
     ? " Session : cadrage solide en amont."
     : ajustTexte < 0
     ? " Session : corrections fréquentes en cours de route."
     : textSignals.hasTexts ? " Session analysée, cohérente avec les métriques." : "";
+  const suffixePR = ajustPR > 0
+    ? ` Review active (médiane ${medReview.toFixed(1)} comments/PR).`
+    : "";
 
   // Beaucoup de corrections après ouverture + reverts = intervention massive
   if (correctionMedian >= 4 || revertRatio > 0.05) {
-    const rank = clampRank(1 + ajustTexte);
+    const rank = clampRank(1 + ajustTotal);
     return axeScore("intervention", rank,
-      `Corrections fréquentes après ouverture (médiane: ${correctionMedian}) et ${reverted} PR revertées. Intervention systématique après coup.${suffixeTexte}`,
+      `Corrections fréquentes après ouverture (médiane: ${correctionMedian}) et ${reverted} PR revertées. Intervention systématique après coup.${suffixeTexte}${suffixePR}`,
       confiance);
   }
 
   // Corrections modérées
   if (correctionMedian >= 2 || failureRate > 0.2) {
-    const rank = clampRank(2 + ajustTexte);
+    const rank = clampRank(2 + ajustTotal);
     return axeScore("intervention", rank,
-      `Corrections après ouverture (médiane: ${correctionMedian}), taux d'échec CI ${pct(failureRate)}. Intervention partielle après coup.${suffixeTexte}`,
+      `Corrections après ouverture (médiane: ${correctionMedian}), taux d'échec CI ${pct(failureRate)}. Intervention partielle après coup.${suffixeTexte}${suffixePR}`,
       confiance);
   }
 
   // Peu de corrections, autonomie correcte
   if (correctionMedian <= 1 && failureRate <= 0.1) {
     if (autonomieRatio >= 0.5 && runsToGreen <= 1) {
-      const rank = clampRank(5 + ajustTexte);
+      const rank = clampRank(5 + ajustTotal);
       return axeScore("intervention", rank,
-        `${pct(autonomieRatio)} des PR mergées sans édition humaine, CI verte du premier coup. Intervention minimale une fois la tâche cadrée.${suffixeTexte}`,
+        `${pct(autonomieRatio)} des PR mergées sans édition humaine, CI verte du premier coup. Intervention minimale une fois la tâche cadrée.${suffixeTexte}${suffixePR}`,
         confiance);
     }
     if (autonomieRatio >= 0.25) {
       const baseRank = autonomieRatio >= 0.35 || mergedNoEdit >= 40 ? 4 : 3;
-      const rank = clampRank(baseRank + ajustTexte);
+      const rank = clampRank(baseRank + ajustTotal);
       return axeScore("intervention", rank,
-        `Corrections faibles (médiane: ${correctionMedian}), ${pct(autonomieRatio)} mergées sans édition (${mergedNoEdit} PR). Intervention aux étapes clés.${suffixeTexte}`,
+        `Corrections faibles (médiane: ${correctionMedian}), ${pct(autonomieRatio)} mergées sans édition (${mergedNoEdit} PR). Intervention aux étapes clés.${suffixeTexte}${suffixePR}`,
         confiance);
     }
   }
 
   // Corrections légères ou autonomie partielle
   if (correctionMedian <= 2) {
-    const rank = clampRank(2 + ajustTexte);
+    const rank = clampRank(2 + ajustTotal);
     return axeScore("intervention", rank,
-      `Corrections modérées (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention après coup sur une partie.${suffixeTexte}`,
+      `Corrections modérées (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention après coup sur une partie.${suffixeTexte}${suffixePR}`,
       confiance);
   }
 
   // Cas résiduel
-  const rank = clampRank(1 + ajustTexte);
+  const rank = clampRank(1 + ajustTotal);
   return axeScore("intervention", rank,
-    `Corrections fréquentes (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention systématique.${suffixeTexte}`,
+    `Corrections fréquentes (médiane: ${correctionMedian}), autonomie ${pct(autonomieRatio)}. Intervention systématique.${suffixeTexte}${suffixePR}`,
     confiance);
 }
 
@@ -367,4 +387,28 @@ function axeScore(axe: AxeId, rank: number, justification: string, confiance: Co
 
 function pct(ratio: number): string {
   return `${Math.round(ratio * 100)}%`;
+}
+
+function lirePRs(pieces: ProfilPieces): PullRequestEntry[] {
+  if (!pieces.pullRequests) return [];
+  const raw = pieces.pullRequests;
+  if (Array.isArray(raw)) return raw as PullRequestEntry[];
+  return [];
+}
+
+function medianeReviewComments(prs: PullRequestEntry[]): number {
+  const vals = prs.map((p) => p.review_comments).sort((a, b) => a - b);
+  if (vals.length === 0) return 0;
+  const mid = Math.floor(vals.length / 2);
+  return vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid];
+}
+
+function lireSonarMetrique(pieces: ProfilPieces, metric: string): number | null {
+  if (!pieces.sonarMeasures) return null;
+  const comp = (pieces.sonarMeasures as Record<string, unknown>)["component"] as Record<string, unknown> | undefined;
+  if (!comp) return null;
+  const measures = comp["measures"] as { metric: string; value: string }[] | undefined;
+  if (!measures) return null;
+  const entry = measures.find((m) => m.metric === metric);
+  return entry ? parseFloat(entry.value) : null;
 }

@@ -5,6 +5,7 @@ export interface ResultatEngine {
   niveauGlobal: NiveauDefinition;
   axeLimitant: AxeId;
   confianceGlobale: Confiance;
+  warnings: string[];
 }
 
 export function evaluer(
@@ -16,17 +17,52 @@ export function evaluer(
       niveauGlobal: niveauParRank(grille, 0),
       axeLimitant: "taille",
       confianceGlobale: "low",
+      warnings: [],
     };
   }
 
   const rankMin = Math.min(...scores.map((s) => s.rank));
   const axeLimitant = scores.find((s) => s.rank === rankMin)!.axe;
+  const warnings = detecterIncoherences(scores);
 
   return {
     niveauGlobal: niveauParRank(grille, rankMin),
     axeLimitant,
     confianceGlobale: confianceMin(scores.map((s) => s.confiance)),
+    warnings,
   };
+}
+
+const LABELS: Record<AxeId, string> = {
+  taille: "Taille",
+  harness: "Harness",
+  intervention: "Intervention",
+  parallele: "En parallèle",
+};
+
+const INCOHERENCES: { haut: AxeId; bas: AxeId; message: string }[] = [
+  { haut: "harness", bas: "intervention",
+    message: "l'outillage est en place mais l'intervention reste massive" },
+  { haut: "taille", bas: "parallele",
+    message: "grosses features mais pas de travail en parallèle" },
+  { haut: "intervention", bas: "harness",
+    message: "autonome mais sans filet d'outillage structuré" },
+];
+
+function detecterIncoherences(scores: AxeScore[]): string[] {
+  const parAxe = Object.fromEntries(scores.map((s) => [s.axe, s.rank])) as Record<AxeId, number>;
+  const warnings: string[] = [];
+
+  for (const { haut, bas, message } of INCOHERENCES) {
+    const rHaut = parAxe[haut];
+    const rBas = parAxe[bas];
+    if (rHaut === undefined || rBas === undefined) continue;
+    if (rHaut - rBas > 3) {
+      warnings.push(`${LABELS[haut]} (rank ${rHaut}) très supérieur à ${LABELS[bas]} (rank ${rBas}) — ${message}`);
+    }
+  }
+
+  return warnings;
 }
 
 const ORDRE_CONFIANCE: Record<Confiance, number> = {
