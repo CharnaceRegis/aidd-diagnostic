@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createInterface, type Interface } from "node:readline";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { chargerGrille } from "./grille.js";
 import { chargerProfils } from "./parser.js";
 import { scorerProfil } from "./scorer.js";
@@ -89,32 +89,73 @@ function afficherEchelle(grille: Grille, rankActuel: number): string {
     .join("──");
 }
 
-function afficherDiagnostic(profil: Profil, diag: Diagnostic): void {
+function formaterDiagnostic(profil: Profil, diag: Diagnostic): string {
   const sep = "─".repeat(50);
   const grille = chargerGrille();
+  const lignes: string[] = [];
 
-  console.log(`\n${sep}`);
-  console.log(`  ${profil.id}`);
-  console.log(`  ${afficherEchelle(grille, diag.niveauGlobal.rank)}`);
-  console.log(sep);
+  lignes.push(`\n${sep}`);
+  lignes.push(`  ${profil.id}`);
+  lignes.push(`  ${afficherEchelle(grille, diag.niveauGlobal.rank)}`);
+  lignes.push(sep);
 
   for (const s of diag.scores) {
     const label = (LABELS_AXES[s.axe] ?? s.axe).padEnd(14);
     const limitant = s.axe === diag.axeLimitant ? " ◄ limitant" : "";
     const lowConf = s.confiance === "low" ? "  ⚠ données insuffisantes" : "";
-    console.log(`  ${label} rank ${s.rank}${limitant}${lowConf}`);
-    console.log(`    ${s.justification}\n`);
+    lignes.push(`  ${label} rank ${s.rank}${limitant}${lowConf}`);
+    lignes.push(`    ${s.justification}\n`);
   }
 
-  console.log(`\n  Progression :`);
-  console.log(
+  lignes.push(`\n  Progression :`);
+  lignes.push(
     diag.progression
       .split("\n")
       .map((l) => `    ${l}`)
       .join("\n")
   );
 
-  console.log(`\n${sep}\n`);
+  lignes.push(`\n${sep}\n`);
+  return lignes.join("\n");
+}
+
+function formaterDiagnosticMd(profil: Profil, diag: Diagnostic): string {
+  const grille = chargerGrille();
+  const lignes: string[] = [];
+
+  lignes.push(`## ${profil.id}`);
+  lignes.push("");
+  lignes.push(`**Niveau : ${diag.niveauGlobal.label}** (rank ${diag.niveauGlobal.rank})`);
+  lignes.push("");
+  lignes.push(`${afficherEchelle(grille, diag.niveauGlobal.rank)}`);
+  lignes.push("");
+  lignes.push("| Axe | Rank | |");
+  lignes.push("|---|---|---|");
+
+  for (const s of diag.scores) {
+    const label = LABELS_AXES[s.axe] ?? s.axe;
+    const limitant = s.axe === diag.axeLimitant ? "◄ limitant" : "";
+    const lowConf = s.confiance === "low" ? "⚠ données insuffisantes" : "";
+    lignes.push(`| ${label} | ${s.rank} | ${limitant} ${lowConf} |`);
+  }
+
+  lignes.push("");
+  for (const s of diag.scores) {
+    const label = LABELS_AXES[s.axe] ?? s.axe;
+    lignes.push(`**${label}** : ${s.justification}`);
+    lignes.push("");
+  }
+
+  lignes.push("### Progression");
+  lignes.push("");
+  lignes.push(diag.progression);
+  lignes.push("");
+
+  return lignes.join("\n");
+}
+
+function afficherDiagnostic(profil: Profil, diag: Diagnostic): void {
+  console.log(formaterDiagnostic(profil, diag));
 }
 
 async function lancerEvaluation(
@@ -124,7 +165,7 @@ async function lancerEvaluation(
 ): Promise<void> {
   const defaut = existsSync("profiles") ? "profiles/" : "";
   const invite = defaut
-    ? `\n  Chemin du profil ou dossier [${defaut}] (q = retour) : `
+    ? `\n  Chemin (ex: profiles/, profiles/lancelot) [${defaut}] (q = retour) : `
     : "\n  Chemin du profil ou dossier (vide = retour) : ";
   const saisie = (await ask(rl, invite)).trim();
   if (saisie.toLowerCase() === "q") return;
@@ -142,12 +183,15 @@ async function lancerEvaluation(
   console.clear();
   console.log(`\n  ${profils.length} profil(s) chargé(s). Analyse en cours (${mode})...\n`);
 
+  const resultats: { profil: Profil; diagnostic: Diagnostic }[] = [];
+
   for (const profil of profils) {
     try {
       const diagnostic = mode === "llm" && client
         ? await diagnostiquerLLM(client, profil)
         : await diagnostiquerHeuristique(profil);
       afficherDiagnostic(profil, diagnostic);
+      resultats.push({ profil, diagnostic });
     } catch (err) {
       console.error(
         `  Erreur sur le profil ${profil.id} :`,
@@ -155,6 +199,27 @@ async function lancerEvaluation(
       );
     }
   }
+
+  if (resultats.length > 0) {
+    const choixExport = (await ask(rl, "  Sauvegarder ? (t = .txt, m = .md, Entrée = non) : ")).trim().toLowerCase();
+    if (choixExport === "t" || choixExport === "m") {
+      const ext = choixExport === "t" ? "txt" : "md";
+      const now = new Date();
+      const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+
+      for (const { profil, diagnostic } of resultats) {
+        const fichier = `diagnostic-${profil.id}-${mode}-${ts}.${ext}`;
+        const contenu = ext === "md"
+          ? `# Diagnostic AIDD — ${profil.id}\n\nDate : ${now.toLocaleDateString("fr-FR")} | Mode : ${mode}\n\n${formaterDiagnosticMd(profil, diagnostic)}`
+          : formaterDiagnostic(profil, diagnostic);
+        writeFileSync(fichier, contenu, "utf-8");
+        console.log(`  ✓ ${fichier}`);
+      }
+      console.log("");
+    }
+  }
+
+  await ask(rl, "  Appuyer sur Entrée pour revenir au menu...");
 }
 
 async function lancerSetup(rl: Interface): Promise<Config | null> {
@@ -167,11 +232,6 @@ async function main(): Promise<void> {
   let mode: Mode = "heuristique";
   let config: Config | null = lireConfig();
   let client: LLMClient | null = null;
-
-  if (config) {
-    mode = "llm";
-    client = createClient(config.provider, config.apiKey);
-  }
 
   while (true) {
     console.clear();
