@@ -405,7 +405,7 @@ function medianeReviewComments(prs: PullRequestEntry[]): number {
 
 function lireSonarMetrique(pieces: ProfilPieces, metric: string): number | null {
   if (!pieces.sonarMeasures) return null;
-  const comp = (pieces.sonarMeasures as Record<string, unknown>)["component"] as Record<string, unknown> | undefined;
+  const comp = pieces.sonarMeasures["component"] as Record<string, unknown> | undefined;
   if (!comp) return null;
   const measures = comp["measures"] as { metric: string; value: string }[] | undefined;
   if (!measures) return null;

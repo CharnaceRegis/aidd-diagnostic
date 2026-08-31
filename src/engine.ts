@@ -33,7 +33,7 @@ export function evaluer(
   };
 }
 
-const LABELS: Record<AxeId, string> = {
+export const LABELS_AXES: Record<AxeId, string> = {
   taille: "Taille",
   harness: "Harness",
   intervention: "Intervention",
@@ -58,7 +58,7 @@ function detecterIncoherences(scores: AxeScore[]): string[] {
     const rBas = parAxe[bas];
     if (rHaut === undefined || rBas === undefined) continue;
     if (rHaut - rBas > 3) {
-      warnings.push(`${LABELS[haut]} (rank ${rHaut}) très supérieur à ${LABELS[bas]} (rank ${rBas}) — ${message}`);
+      warnings.push(`${LABELS_AXES[haut]} (rank ${rHaut}) très supérieur à ${LABELS_AXES[bas]} (rank ${rBas}) — ${message}`);
     }
   }
 

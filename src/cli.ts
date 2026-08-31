@@ -6,7 +6,7 @@ import { chargerGrille } from "./grille.js";
 import { chargerProfils } from "./parser.js";
 import { scorerProfil } from "./scorer.js";
 import { scorerProfilHeuristique } from "./heuristic-scorer.js";
-import { evaluer } from "./engine.js";
+import { evaluer, LABELS_AXES } from "./engine.js";
 import { expliquer } from "./explainer.js";
 import { expliquerHeuristique } from "./heuristic-explainer.js";
 import { lireConfig } from "./config.js";
@@ -68,18 +68,7 @@ async function diagnostiquerLLM(client: LLMClient, profil: Profil): Promise<Diag
   return { scores, niveauGlobal, axeLimitant, explication, progression, confianceGlobale, warnings };
 }
 
-const LABELS_AXES: Record<string, string> = {
-  taille: "Taille",
-  harness: "Harness",
-  intervention: "Intervention",
-  parallele: "En parallèle",
-};
 
-const CONF_DOTS: Record<string, string> = {
-  high: "●●●",
-  medium: "●●○",
-  low: "●○○",
-};
 
 function afficherEchelle(grille: Grille, rankActuel: number): string {
   return grille.niveaux
