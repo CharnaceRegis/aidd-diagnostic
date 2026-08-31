@@ -162,6 +162,24 @@ function afficherDiagnostic(profil: Profil, diag: Diagnostic): void {
   console.log(formaterDiagnostic(profil, diag));
 }
 
+function formaterRecap(resultats: { profil: Profil; diagnostic: Diagnostic }[]): string {
+  const sep = "─".repeat(50);
+  const lignes: string[] = [sep, "  Récapitulatif\n"];
+  lignes.push("  Profil          Niveau         Axe limitant");
+  lignes.push("  " + "─".repeat(46));
+
+  for (const { profil, diagnostic } of resultats) {
+    const id = profil.id.padEnd(16);
+    const niveau = diagnostic.niveauGlobal.label.padEnd(15);
+    const limitant = LABELS_AXES[diagnostic.axeLimitant as keyof typeof LABELS_AXES] ?? diagnostic.axeLimitant;
+    lignes.push(`  ${id}${niveau}${limitant}`);
+  }
+
+  lignes.push("  " + "─".repeat(46));
+  lignes.push("");
+  return lignes.join("\n");
+}
+
 async function lancerEvaluation(
   rl: Interface,
   mode: Mode,
@@ -202,6 +220,10 @@ async function lancerEvaluation(
         err instanceof Error ? err.message : err
       );
     }
+  }
+
+  if (resultats.length > 1) {
+    console.log(formaterRecap(resultats));
   }
 
   if (resultats.length > 0) {
